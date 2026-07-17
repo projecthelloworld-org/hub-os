@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="description" content="HubOS school connectivity operations console">
+    <title>HubOS · School connectivity operations</title>
+    <link rel="stylesheet" href="/static/app.css?v=0.2.0">
+    <script src="/static/app.js?v=0.2.0" type="module"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to operations overview</a>
+    <header class="masthead">
+      <a class="wordmark" href="/" aria-label="HubOS home">
+        <span class="wordmark-mark" aria-hidden="true">H</span>
+        <span>HubOS</span>
+      </a>
+      <p class="masthead-context"><span class="live-dot" aria-hidden="true"></span> Demonstration environment</p>
+      <div class="masthead-actions">
+        <p id="updated-at" class="updated-at" aria-live="polite">Preparing field view…</p>
+        <button id="refresh-button" class="button button-secondary" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">School connectivity / operations desk</p>
+          <h1 id="page-title">Know what needs attention.</h1>
+          <p class="lede">A shared view of connectivity, power, and managed devices across ten synthetic school sites in Uganda and Angola.</p>
+        </div>
+        <div class="hero-note">
+          <span class="hero-note-index">01</span>
+          <p><strong>Built for action.</strong> Status is current evidence, not a performance score. Investigate before escalating.</p>
+        </div>
+      </section>
+
+      <div id="error-banner" class="notice notice-error" role="alert" hidden>
+        <div><strong>Field view unavailable</strong><span id="error-message">The current data could not be loaded.</span></div>
+        <button id="retry-button" class="button button-dark" type="button">Try again</button>
+      </div>
+
+      <section class="summary" aria-labelledby="summary-title">
+        <div class="section-heading summary-heading">
+          <div>
+            <p class="eyebrow">Current position</p>
+            <h2 id="summary-title">Network at a glance</h2>
+          </div>
+          <div class="filters" role="group" aria-label="Filter schools by country">
+            <button class="filter is-active" type="button" data-country="ALL" aria-pressed="true">All</button>
+            <button class="filter" type="button" data-country="UG" aria-pressed="false">Uganda</button>
+            <button class="filter" type="button" data-country="AO" aria-pressed="false">Angola</button>
+          </div>
+        </div>
+        <div class="summary-grid" aria-live="polite">
+          <article class="summary-card summary-card-total">
+            <p>Schools in view</p>
+            <strong id="site-count">—</strong>
+            <span id="country-breakdown">Loading site register</span>
+          </article>
+          <article class="summary-card">
+            <p><span class="status-dot healthy"></span>Operating normally</p>
+            <strong id="healthy-count">—</strong>
+            <span>No degraded or critical domains</span>
+          </article>
+          <article class="summary-card">
+            <p><span class="status-dot degraded"></span>Needs review</p>
+            <strong id="degraded-count">—</strong>
+            <span>One or more degraded domains</span>
+          </article>
+          <article class="summary-card">
+            <p><span class="status-dot critical"></span>Action required</p>
+            <strong id="critical-count">—</strong>
+            <span>One or more critical domains</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="operations-grid">
+        <div class="site-register" aria-labelledby="schools-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Site register</p>
+              <h2 id="schools-title">School status</h2>
+            </div>
+            <p id="visible-count" class="section-meta">— schools</p>
+          </div>
+          <div class="status-key" aria-label="Status key">
+            <span><i class="status-dot healthy"></i>Healthy</span>
+            <span><i class="status-dot degraded"></i>Degraded</span>
+            <span><i class="status-dot critical"></i>Critical</span>
+            <span><i class="status-dot unknown"></i>No evidence</span>
+          </div>
+          <div id="site-list" class="site-list" aria-live="polite" aria-busy="true">
+            <div class="skeleton-row"></div>
+            <div class="skeleton-row"></div>
+            <div class="skeleton-row"></div>
+          </div>
+        </div>
+
+        <aside class="attention-panel" aria-labelledby="attention-title">
+          <div class="attention-heading">
+            <div>
+              <p class="eyebrow eyebrow-light">Support queue</p>
+              <h2 id="attention-title">Needs attention</h2>
+            </div>
+            <span id="incident-count" class="count-badge">—</span>
+          </div>
+          <div id="incident-list" class="incident-list" aria-live="polite">
+            <p class="empty-copy">Loading current incidents…</p>
+          </div>
+          <div class="runbook-note">
+            <p>When a warning appears</p>
+            <ol>
+              <li>Check the latest evidence.</li>
+              <li>Contact the responsible local team.</li>
+              <li>Record the action and outcome.</li>
+            </ol>
+          </div>
+        </aside>
+      </section>
+
+      <section class="sources" aria-labelledby="sources-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Integration layer</p>
+            <h2 id="sources-title">Connected evidence</h2>
+          </div>
+          <p class="section-meta">Vendor systems remain the source of record</p>
+        </div>
+        <div id="source-list" class="source-list">
+          <p class="empty-copy">Loading source inventory…</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p><strong>HubOS</strong> · Open infrastructure for school connectivity operations.</p>
+      <p>All schools and readings shown here are synthetic.</p>
+    </footer>
+  </body>
+</html>

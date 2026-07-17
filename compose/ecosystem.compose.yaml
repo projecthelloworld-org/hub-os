@@ -1,0 +1,10 @@
+include:
+  - path:
+      - vendor/headwind-mdm/docker-compose.yaml
+      - compose/headwind.hubos.override.yaml
+    project_directory: vendor/headwind-mdm
+    env_file: vendor/headwind-mdm/.env
+
+  - path: vendor/odk-central/docker-compose.yml
+    project_directory: vendor/odk-central
+    env_file: vendor/odk-central/.env

@@ -1,0 +1,23 @@
+services:
+  certbot:
+    profiles: ["headwind-certificates"]
+
+  postgresql:
+    ports: !reset []
+    restart: unless-stopped
+    networks:
+      - headwind-internal
+
+  hmdm:
+    ports: !override
+      - "${HMDM_HTTP_PORT:-8081}:8080"
+      - "${HMDM_CLIENT_PORT:-31000}:31000"
+    restart: unless-stopped
+    networks:
+      - headwind-internal
+      - headwind-egress
+
+networks:
+  headwind-internal:
+    internal: true
+  headwind-egress:

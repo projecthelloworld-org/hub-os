@@ -1,0 +1,93 @@
+name: hubos
+
+x-hubos-environment: &hubos-environment
+  HUBOS_ENV: ${HUBOS_ENV:-development}
+  HUBOS_DATABASE_URL: ${HUBOS_DATABASE_URL:-postgresql://hubos:hubos-local-only@db:5432/hubos}
+  HUBOS_DEMO_MODE: ${HUBOS_DEMO_MODE:-false}
+  HUBOS_INGEST_KEY: ${HUBOS_INGEST_KEY:-local-demo-ingest-key}
+  HUBOS_ADMIN_KEY: ${HUBOS_ADMIN_KEY:-local-demo-admin-key}
+  HUBOS_OPERATOR_CONSOLE_ENABLED: ${HUBOS_OPERATOR_CONSOLE_ENABLED:-true}
+
+x-hubos-service: &hubos-service
+  build:
+    context: ./services/hubos
+  image: hubos/core:local
+  environment: *hubos-environment
+  restart: unless-stopped
+  networks:
+    - backend
+    - egress
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hubos}
+      POSTGRES_USER: ${POSTGRES_USER:-hubos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hubos-local-only}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - backend
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2.30.0
+    command: ["--wait", "--migrations-dir", "/db/migrations", "--no-dump-schema", "up"]
+    environment:
+      DATABASE_URL: ${HUBOS_DATABASE_URL:-postgresql://hubos:hubos-local-only@db:5432/hubos?sslmode=disable}
+    volumes:
+      - ./db:/db:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  api:
+    <<: *hubos-service
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bun", "-e", "await fetch('http://127.0.0.1:3000/healthz').then(r => { if (!r.ok) process.exit(1) })"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  worker:
+    <<: *hubos-service
+    command: ["bun", "run", "worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "${HUBOS_BIND_ADDRESS:-127.0.0.1}:${HUBOS_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+
+networks:
+  frontend:
+  backend:
+    internal: true
+  egress:
+
+volumes:
+  postgres-data:

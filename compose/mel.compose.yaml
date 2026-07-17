@@ -1,0 +1,52 @@
+services:
+  metabase-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: metabase
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: ${METABASE_DB_PASSWORD:-metabase-local-only}
+    volumes:
+      - metabase-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metabase -d metabase"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - backend
+
+  metabase:
+    image: metabase/metabase:v0.60.7
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-db
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:-metabase-local-only}
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_ENABLE_EMBEDDING: "false"
+      MB_SITE_NAME: HubOS Monitoring and Evaluation
+      MB_SITE_URL: ${METABASE_SITE_URL:-http://localhost:3001}
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE_ENCRYPTION_SECRET_KEY:-aHViT3MtbG9jYWwtb25seS1lbmNyeXB0aW9uLWtleQ==}
+    ports:
+      - "${HUBOS_BIND_ADDRESS:-127.0.0.1}:${METABASE_PORT:-3001}:3000"
+    depends_on:
+      metabase-db:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+volumes:
+  metabase-db-data:

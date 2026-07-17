@@ -1,0 +1,77 @@
+services:
+  seed:
+    build:
+      context: ./services/hubos
+    image: hubos/core:local
+    command: ["bun", "run", "seed"]
+    environment:
+      HUBOS_ENV: development
+      HUBOS_DATABASE_URL: ${HUBOS_DATABASE_URL:-postgresql://hubos:hubos-local-only@db:5432/hubos}
+      HUBOS_DEMO_MODE: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  api:
+    environment:
+      HUBOS_DEMO_MODE: "true"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  worker:
+    environment:
+      HUBOS_DEMO_MODE: "true"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  metabase:
+    environment:
+      MB_EMAIL_SMTP_HOST: mailpit
+      MB_EMAIL_SMTP_PORT: 1025
+      MB_EMAIL_SMTP_SECURITY: none
+      MB_EMAIL_FROM_ADDRESS: hubos-alerts@local.test
+    depends_on:
+      mailpit:
+        condition: service_started
+
+  metabase-bootstrap:
+    build:
+      context: ./services/hubos
+    image: hubos/core:local
+    command: ["bun", "run", "metabase:bootstrap"]
+    environment:
+      METABASE_URL: http://metabase:3000
+      METABASE_SITE_NAME: HubOS Monitoring and Evaluation
+      METABASE_ADMIN_FIRST_NAME: ${METABASE_ADMIN_FIRST_NAME:-HubOS}
+      METABASE_ADMIN_LAST_NAME: ${METABASE_ADMIN_LAST_NAME:-Administrator}
+      METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL:-admin@hubos.local}
+      METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD:-hubos-local-admin-1}
+      METABASE_HUBOS_DATABASE_NAME: HubOS PostgreSQL
+      METABASE_HUBOS_DB_HOST: db
+      METABASE_HUBOS_DB_PORT: 5432
+      METABASE_HUBOS_DB_NAME: ${POSTGRES_DB:-hubos}
+      METABASE_HUBOS_DB_USER: ${METABASE_HUBOS_DB_USER:-${POSTGRES_USER:-hubos}}
+      METABASE_HUBOS_DB_PASSWORD: ${METABASE_HUBOS_DB_PASSWORD:-${POSTGRES_PASSWORD:-hubos-local-only}}
+      METABASE_HUBOS_SCHEMAS: ${METABASE_HUBOS_SCHEMAS:-analytics,public}
+    depends_on:
+      metabase:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "${HUBOS_BIND_ADDRESS:-127.0.0.1}:${MAILPIT_WEB_PORT:-8025}:8025"
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend

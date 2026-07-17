@@ -1,0 +1,29 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "hubos-core",
+      "devDependencies": {
+        "dbmate": "2.30.0",
+      },
+    },
+  },
+  "packages": {
+    "@dbmate/darwin-arm64": ["@dbmate/darwin-arm64@2.30.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-4zE4qIg8BoCrM4KdjkZQHkte2txOrGc4ej2FnGpoKPNZzuAjLodOIpNmBw8383FnTSuGSfgo2JrvwVBgWEgnzw=="],
+
+    "@dbmate/darwin-x64": ["@dbmate/darwin-x64@2.30.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-+LBFZH8JBwTg5W5RrreW21AjCQTEFljd0UrVbAIP6P9beyymqxjdrcuueHly8KjlVHpmUZcJci+isR27jbB0OQ=="],
+
+    "@dbmate/linux-arm": ["@dbmate/linux-arm@2.30.0", "", { "os": "linux", "cpu": "arm" }, "sha512-1ohw+51821rDVCtOexaz20TKp+jX2cl3SY/+xAZT+sPYd4oQ9i5NNQW0htFI1+A+uzzyq2zvnIjamsPgVaz7rQ=="],
+
+    "@dbmate/linux-arm64": ["@dbmate/linux-arm64@2.30.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-VyZ+4wX/8NLh7p1Diob3pfkUUKLQXdyOBxiLlq1lo6gL+ux6WaGL/p/pD/I9Pey9Il4adj7aeS8r7+JU0mzG5Q=="],
+
+    "@dbmate/linux-ia32": ["@dbmate/linux-ia32@2.30.0", "", { "os": "linux", "cpu": "ia32" }, "sha512-0enz5pDZLer60Q3rifEX1kYpc0vmjip1E6EYMMhYFrqrCtJCeZ0YJ921XQUDUKraOr3NceeK/NPqekV99uD5sw=="],
+
+    "@dbmate/linux-x64": ["@dbmate/linux-x64@2.30.0", "", { "os": "linux", "cpu": "x64" }, "sha512-ZXyreJrJBnAVlv/te0Ma0D6NVAZyFcJM8oKEVgyFcC0FMpKUFrjb5eh0o3VRrkVOhYPrkS9lsjTUxd8ruWVqyg=="],
+
+    "@dbmate/win32-x64": ["@dbmate/win32-x64@2.30.0", "", { "os": "win32", "cpu": "x64" }, "sha512-VDjJUQFZzfirD+bztIXltscuqaWlGSLgkxE0IdzpMYnllxkHtE0r681VOMHP9x9PRW3a8+XzLROg92FoqWqLKQ=="],
+
+    "dbmate": ["dbmate@2.30.0", "", { "optionalDependencies": { "@dbmate/darwin-arm64": "2.30.0", "@dbmate/darwin-x64": "2.30.0", "@dbmate/linux-arm": "2.30.0", "@dbmate/linux-arm64": "2.30.0", "@dbmate/linux-ia32": "2.30.0", "@dbmate/linux-x64": "2.30.0", "@dbmate/win32-x64": "2.30.0" }, "bin": { "dbmate": "dist/cli.js" } }, "sha512-I9sANFyh68aCZojF6Tr9/p5o7vRRjumkK21s0qGoq9T8n08mO2RHVZ/bE19MCOGdGidM4ftc1iHurJeV6ajWHg=="],
+  }
+}
