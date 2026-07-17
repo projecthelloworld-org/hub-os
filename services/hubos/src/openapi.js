@@ -1,4 +1,4 @@
-export function buildOpenApi(version = "0.2.0") {
+export function buildOpenApi(version = "0.1.0") {
   return {
     openapi: "3.1.0",
     info: {

@@ -23,7 +23,10 @@ tar -xzf "$release_dir/$archive_name" -C "$work"
 docker run --rm \
   -v "$work/hubos-v$version:/source:ro" \
   -v "$release_dir:/output" \
-  "$syft_image" dir:/source -o "spdx-json=/output/$sbom_name"
+  "$syft_image" dir:/source \
+  --source-name HubOS \
+  --source-version "$version" \
+  -o "spdx-json=/output/$sbom_name"
 
 (
   cd "$release_dir"

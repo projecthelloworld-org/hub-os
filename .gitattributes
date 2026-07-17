@@ -1,3 +1,4 @@
 * text=auto eol=lf
 *.tar.gz binary
 *.spdx.json linguist-generated=true
+release export-ignore

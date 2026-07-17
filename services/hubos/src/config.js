@@ -29,7 +29,7 @@ export function loadConfig(env = process.env) {
     operatorConsoleEnabled: readBoolean(env.HUBOS_OPERATOR_CONSOLE_ENABLED, true),
     workerPollIntervalMs: readInteger(env.HUBOS_WORKER_POLL_INTERVAL_MS, 2000),
     workerLeaseSeconds: readInteger(env.HUBOS_WORKER_LEASE_SECONDS, 300),
-    version: env.HUBOS_VERSION ?? "0.2.0",
+    version: env.HUBOS_VERSION ?? "0.1.0",
   };
 
   if (config.environment.toLowerCase() === "production") {

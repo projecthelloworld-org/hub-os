@@ -28,6 +28,12 @@ For a guided server installation, run the interactive installer from a release c
 ./install.sh
 ```
 
+Once the tagged release assets and website endpoint are live, the equivalent hosted command is:
+
+```sh
+curl -fsSL https://hubos.myhellohub.org/install.sh | bash
+```
+
 The installer checks Docker and Compose, checks available disk space and ports, gathers the Metabase administrator details without echoing the password, generates the remaining service secrets, creates a protected `.env`, starts the stack, and waits for HubOS and Metabase to become healthy. See the [installation guide](docs/Installation.md) for the eventual hosted one-command form, automation, upgrades, and the optional ecosystem profile.
 
 ```sh

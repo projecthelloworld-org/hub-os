@@ -29,17 +29,17 @@ The ecosystem profile needs `git` and considerably more memory, storage, and sta
 
 ## Hosted one-command installation
 
-Once a signed HubOS release and installer are published, the public command has this form:
+The public installation command is:
 
 ```sh
-curl -fsSL https://YOUR-HUBOS-DOMAIN/install.sh | bash
+curl -fsSL https://hubos.myhellohub.org/install.sh | bash
 ```
 
-Interactive input is read directly from the terminal, so piping the script does not consume the answers. The hosted installer must be published over HTTPS, and its embedded `DEFAULT_RELEASE_URL` and `DEFAULT_RELEASE_SHA256` must identify an immutable release archive. The installer verifies that checksum before extracting the release. Until that release location exists, a release URL and checksum can be supplied explicitly:
+Interactive input is read directly from the terminal, so piping the script does not consume the answers. The hosted installer is published over HTTPS, and its embedded `DEFAULT_RELEASE_URL` and `DEFAULT_RELEASE_SHA256` identify the immutable GitHub release archive. The installer verifies that checksum before extracting the release. A mirror or internally reviewed archive can be supplied explicitly:
 
 ```sh
-curl -fsSL https://YOUR-HUBOS-DOMAIN/install.sh | \
-  HUBOS_RELEASE_URL=https://YOUR-HUBOS-DOMAIN/releases/hubos-VERSION.tar.gz \
+curl -fsSL https://hubos.myhellohub.org/install.sh | \
+  HUBOS_RELEASE_URL=https://mirror.example.org/hubos-VERSION.tar.gz \
   HUBOS_RELEASE_SHA256=THE_RELEASE_SHA256 bash
 ```
 
