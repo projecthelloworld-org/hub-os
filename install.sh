@@ -5,8 +5,8 @@ set -Eeuo pipefail
 umask 077
 
 VERSION="0.1.0"
-DEFAULT_RELEASE_URL=""
-DEFAULT_RELEASE_SHA256=""
+DEFAULT_RELEASE_URL="https://github.com/projecthelloworld-org/hub-os/releases/download/v0.1.0/hubos-v0.1.0.tar.gz"
+DEFAULT_RELEASE_SHA256="b1db6a4760fd06b1cea14b2fce6452eeaad311035b1d87661ca4444f2fdb3af7"
 INTERACTIVE=1
 ASSUME_YES=0
 START_STACK=1
