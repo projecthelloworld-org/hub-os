@@ -149,6 +149,7 @@ env_escape() {
 
 script_source_dir() {
   local candidate
+  [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]] || return 1
   candidate=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)
   [[ -f "$candidate/compose.yaml" && -f "$candidate/.env.example" ]] && printf '%s' "$candidate"
 }
