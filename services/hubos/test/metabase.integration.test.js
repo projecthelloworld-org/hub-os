@@ -114,7 +114,12 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
 
   const resource = async (kind, key) => (await store.db`SELECT external_id FROM managed_tool_resources
     WHERE tool = 'metabase' AND kind = ${kind} AND resource_key = ${key}`)[0].external_id;
-  const query = async (key, parameters = []) => client(`/api/card/${await resource('card', key)}/query`, { method: 'POST', body: { parameters } });
+  const query = async (key, parameters = []) => client(`/api/card/${await resource('card', key)}/query`, { method: 'POST', body: {
+    // Metabase 0.64 validates the declared parameter identifier before executing
+    // the query. Match each saved question's template-tag identity.
+    parameters: parameters.map((parameter) => ({ ...parameter,
+      id: stableId('metabase-tag', `${key}:${parameter.target[1][1]}`) })),
+  } });
   const parameter = (name, value) => ({ type: name === 'date' ? 'date/all-options' : 'string/=', value,
     target: ['dimension', ['template-tag', name]] });
 
