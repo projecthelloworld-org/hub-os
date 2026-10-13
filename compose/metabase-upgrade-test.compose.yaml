@@ -1,0 +1,49 @@
+# Owned disposable upgrade fixture. Public fixture credentials are not deployable.
+services:
+  metabase-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: metabase_upgrade_fixture
+      POSTGRES_USER: metabase_upgrade_fixture
+      POSTGRES_PASSWORD: fixture-only-not-for-deployment
+    volumes:
+      - metabase-upgrade-fixture-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U metabase_upgrade_fixture -d metabase_upgrade_fixture]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  metabase:
+    image: ${HUBOS_TEST_METABASE_UPGRADE_IMAGE:-metabase/metabase:v0.60.7@sha256:72f7f57f93901c8b94806ba582d3a4aed00456f3f7b357eb6850c51625d49fed}
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-db
+      MB_DB_DBNAME: metabase_upgrade_fixture
+      MB_DB_USER: metabase_upgrade_fixture
+      MB_DB_PASS: fixture-only-not-for-deployment
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_REPORT_TIMEZONE: UTC
+      # Deliberately present before the old application creates encrypted details.
+      # The test retains this exact key through the application database upgrade.
+      MB_ENCRYPTION_SECRET_KEY: Zml4dHVyZS1vbmx5LW1ldGFiYXNlLWVuY3J5cHRpb24ta2V5LTIwMjY=
+      JAVA_TOOL_OPTIONS: -Xmx768m
+    ports:
+      - "127.0.0.1:13051:3000"
+    networks:
+      - default
+      - fixture-database
+    depends_on:
+      metabase-db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:3000/api/health]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+volumes:
+  metabase-upgrade-fixture-db:
+networks:
+  fixture-database:
+    external: true
+    name: ${HUBOS_TEST_DB_NETWORK:-hubos-v02-foundation-test_default}
