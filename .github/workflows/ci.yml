@@ -30,6 +30,10 @@ jobs:
           docker compose -p hubos-ci-test -f compose/test.compose.yaml run --rm migrate
           docker compose -p hubos-ci-kuma-test -f compose/kuma-test.compose.yaml up -d --wait
           docker compose -p hubos-ci-metabase-test -f compose/metabase-test.compose.yaml up -d --wait
+          # Reach the ephemeral test receiver through this fixture's own bridge.
+          # This does not change installed HubOS bindings or authentication.
+          gateway=$(docker network inspect hubos-ci-metabase-test_default --format '{{(index .IPAM.Config 0).Gateway}}')
+          echo "HUBOS_TEST_CALLBACK_HOST=$gateway" >> "$GITHUB_ENV"
       - run: bun test
         env:
           HUBOS_TEST_DATABASE_URL: postgresql://hubos_test:fixture-only-not-for-deployment@127.0.0.1:15432/hubos_test
@@ -38,12 +42,13 @@ jobs:
           # Callback reaches the ephemeral CI test receiver via Docker's host gateway.
           # Installed HubOS services retain private loopback bindings by default.
           HUBOS_TEST_CALLBACK_BIND: 0.0.0.0
+          HUBOS_TEST_METABASE_PROJECT: hubos-ci-metabase-test
       - run: bun run check
       - name: Report isolated integration service diagnostics
         if: failure()
         working-directory: .
         run: |
-          docker compose -p hubos-ci-metabase-test -f compose/metabase-test.compose.yaml logs --tail=120 metabase
+          docker compose -p hubos-ci-metabase-test -f compose/metabase-test.compose.yaml logs --tail=600 metabase | sed '/|[[:space:]]*at /d'
           docker compose -p hubos-ci-kuma-test -f compose/kuma-test.compose.yaml logs --tail=80 kuma
       - name: Validate Pages builder syntax
         working-directory: .

@@ -47,10 +47,16 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     }
     await store.seedDemo(buildDemoState(new Date()));
     const receiver = createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), resolveSecrets: async () => ({ webhookKey }) });
+    const callbackHost = process.env.HUBOS_TEST_CALLBACK_HOST ?? 'host.docker.internal';
+    if (callbackHost !== 'host.docker.internal' && !/^172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(callbackHost)) {
+      throw new Error('Private fixture bridge callback required');
+    }
     server = Bun.serve({ hostname: process.env.HUBOS_TEST_CALLBACK_BIND ?? '127.0.0.1', port: 13024,
       fetch: async (request) => {
+        const received = { path: new URL(request.url).pathname, status: null };
+        callbacks.push(received);
         const response = await receiver(request);
-        callbacks.push({ path: new URL(request.url).pathname, status: response.status });
+        received.status = response.status;
         return response;
       } });
     env = {
@@ -60,10 +66,18 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
       METABASE_HUBOS_DB_HOST: 'db', METABASE_HUBOS_DB_PORT: '5432',
       METABASE_HUBOS_DB_NAME: databaseName, METABASE_HUBOS_DB_USER: roleName,
       METABASE_HUBOS_DB_PASSWORD: 'Fixture-Reporting-Password-2026!', METABASE_WEBHOOK_KEY: webhookKey,
-      HUBOS_INTERNAL_URL: `http://host.docker.internal:${server.port}`,
+      HUBOS_INTERNAL_URL: `http://${callbackHost}:${server.port}`,
       // Manual native sends exercise the same routing without timing-dependent scheduled sends.
       METABASE_ALERT_CRON: '0 0 0 1 1 ?',
     };
+    const project = process.env.HUBOS_TEST_METABASE_PROJECT;
+    if (project) {
+      if (!['hubos-ci-metabase-test', 'hubos-v02-metabase-test'].includes(project)) throw new Error('Owned fixture project required');
+      const probe = Bun.spawn(['docker', 'compose', '-p', project, '-f', '../../compose/metabase-test.compose.yaml',
+        'exec', '-T', 'metabase', 'curl', '--fail', '--silent', '--max-time', '5', `${env.HUBOS_INTERNAL_URL}/healthz`],
+      { stdout: 'ignore', stderr: 'ignore' });
+      if (await probe.exited !== 0) throw new Error('METABASE_FIXTURE_CALLBACK_TRANSPORT_FAILED');
+    }
     // Simulate the v0.1 tool account/database connection, then upgrade it in place.
     const legacy = loadMetabaseBootstrapConfig({ ...env, METABASE_HUBOS_DB_USER: base.username,
       METABASE_HUBOS_DB_PASSWORD: decodeURIComponent(base.password), METABASE_HUBOS_SCHEMAS: 'public,analytics' });

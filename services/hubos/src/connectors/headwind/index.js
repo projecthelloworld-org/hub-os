@@ -7,7 +7,7 @@ async function session({ source, config, credentials, requestJson, signal }) {
   let token;
   async function login() {
     const value = await requestJson(new URL('rest/public/jwt/login', base), { method: 'POST', signal,
-      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ login: credentials.username,
+      headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ login: credentials.username,
         password: createHash('md5').update(credentials.password).digest('hex').toUpperCase() }) });
     if (typeof value?.id_token !== 'string' || !value.id_token) fail();
     token = value.id_token;
@@ -17,7 +17,7 @@ async function session({ source, config, credentials, requestJson, signal }) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const response = await requestJson(new URL(`rest/private/${path}`, base), { signal,
-          method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json' },
           ...(body ? { body: JSON.stringify(body) } : {}) });
         if (response?.status !== 'OK') fail('HEADWIND_APPLICATION_ERROR');
         return response.data;

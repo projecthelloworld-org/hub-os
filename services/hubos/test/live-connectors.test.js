@@ -76,6 +76,7 @@ describe('read-only live connector projections', () => {
   function headwindHandler({ conflicting = false, incomplete = false, expired = false } = {}) {
     let loginCount = 0, denied = false;
     return (url, options) => {
+      expect(options.headers.accept).toBe('application/json');
       if (url.pathname.endsWith('/jwt/login')) {
         loginCount++;
         expect(JSON.parse(options.body).password).not.toBe('sentinel-password');
