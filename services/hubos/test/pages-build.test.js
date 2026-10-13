@@ -102,8 +102,10 @@ describe("Pages homepage", () => {
   function copyControls(clipboard) {
     let click;
     let selected;
+    const attributes = {};
     const button = {
-      hidden: true, disabled: false, textContent: "Copy command",
+      hidden: true, disabled: false, dataset: {}, title: "Copy installation command",
+      setAttribute: (name, value) => { attributes[name] = value; },
       addEventListener: (event, listener) => { if (event === "click") click = listener; },
     };
     const command = { textContent: "curl -fsSL https://hubos.myhellohub.org/install.sh | bash" };
@@ -117,7 +119,7 @@ describe("Pages homepage", () => {
       },
       window: { getSelection: () => ({ removeAllRanges() {}, addRange() {} }) },
     });
-    return { button, command, feedback, click: () => click(), selected: () => selected };
+    return { button, attributes, command, feedback, click: () => click(), selected: () => selected };
   }
 
   test("keeps the compact content, branding, release links and accessible copy control", () => {
@@ -126,11 +128,14 @@ describe("Pages homepage", () => {
       "Keep school connectivity working.", "Latest stable: v0.1.0", "Versioned installers",
       'href="https://github.com/projecthelloworld-org/hub-os/blob/main/docs/Installation.md"',
       'href="./releases/v0.1.0/install.sh"', 'aria-labelledby="install-heading"',
-      'aria-describedby="copy-feedback" hidden>Copy command</button>', 'role="status" aria-live="polite"',
+      'aria-label="Copy installation command"', 'aria-describedby="copy-feedback" hidden>',
+      '<div class="command-window">', '<svg class="copy-icon"', '<svg class="copy-success"',
+      'role="status" aria-live="polite"',
     ]) expect(html).toContain(content);
     const withoutScript = html.replace(/<script>[\s\S]*?<\/script>/, "");
     expect(withoutScript).toContain('<code id="install-command">curl -fsSL https://hubos.myhellohub.org/install.sh | bash</code>');
     expect(withoutScript).toContain('href="https://github.com/projecthelloworld-org/hub-os"');
+    expect(html).toMatch(/<div class="command-window">[\s\S]*?<pre[^>]*>[\s\S]*?<\/pre>\s*<button class="copy-command"/);
   });
 
   test("writes identical root and versioned installers without branding changes", async () => {
@@ -144,12 +149,14 @@ describe("Pages homepage", () => {
     expect(controls.button.hidden).toBe(false);
     const copying = controls.click();
     expect(controls.button.disabled).toBe(true);
-    expect(controls.button.textContent).toBe("Copying…");
+    expect(controls.attributes["aria-busy"]).toBe("true");
     await copying;
     expect(copied).toBe(controls.command.textContent);
     expect(controls.feedback.textContent).toBe("Installation command copied.");
-    expect(controls.button.textContent).toBe("Copied");
+    expect(controls.button.dataset.state).toBe("copied");
+    expect(controls.button.title).toBe("Command copied");
     expect(controls.button.disabled).toBe(false);
+    expect(controls.attributes["aria-busy"]).toBe("false");
   });
 
   test("offers manual copying when clipboard permission is denied", async () => {
@@ -157,7 +164,8 @@ describe("Pages homepage", () => {
     await controls.click();
     expect(controls.feedback.textContent).toBe("Copy unavailable. Select the command and copy it manually.");
     expect(controls.selected()).toBe(controls.command);
-    expect(controls.button.textContent).toBe("Copy command");
+    expect(controls.button.dataset.state).toBe("idle");
+    expect(controls.button.title).toBe("Copy installation command");
     expect(controls.button.disabled).toBe(false);
   });
 

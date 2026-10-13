@@ -80,16 +80,18 @@ function homePage(latest, versions) {
     p{max-width:70ch;margin:0 0 20px}.lead{font-size:18px;line-height:1.65;max-width:66ch}
     a{color:var(--orange-dark);text-underline-offset:4px;text-decoration-thickness:1px}a:hover{color:var(--ink)}
     a:focus-visible,button:focus-visible,pre:focus-visible{outline:3px solid var(--orange-dark);outline-offset:5px}
-    section{margin-top:40px}.section-title{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:18px}
-    button{min-width:136px;min-height:44px;padding:10px 16px;border:1px solid transparent;border-radius:6px;background:var(--orange);color:var(--ink);font:inherit;font-size:14px;font-weight:700;line-height:1.4;cursor:pointer}
-    button:hover{background:var(--orange-dark);color:#fff}button:active{background:var(--ink);color:#fff}button:disabled{background:var(--cream);color:var(--muted);border-color:var(--line);cursor:wait}
-    pre{max-width:100%;margin:0;white-space:pre;overflow-x:auto;background:var(--ink);color:var(--cream);padding:22px 24px;border-radius:6px;font:14px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;scrollbar-color:var(--orange) var(--ink);scrollbar-width:thin}
+    section{margin-top:40px}.section-title{margin-bottom:18px}
+    .command-window{display:flex;align-items:center;gap:8px;padding:12px;background:var(--ink);border-radius:6px}
+    .copy-command{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--cream);cursor:pointer}
+    .copy-command:hover{background:#383633}.copy-command:active{background:#49443e}.copy-command:disabled{color:#c7c3bc;cursor:wait}.copy-command:focus-visible{outline-color:var(--orange);outline-offset:2px}
+    .copy-command svg{display:block;width:20px;height:20px}.copy-command .copy-success{display:none}.copy-command[data-state="copied"] .copy-icon{display:none}.copy-command[data-state="copied"] .copy-success{display:block}
+    pre{flex:1;min-width:0;max-width:100%;margin:0;white-space:pre;overflow-x:auto;color:var(--cream);padding:10px 12px;font:14px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;scrollbar-color:var(--orange) var(--ink);scrollbar-width:thin}
     pre::selection,pre ::selection{background:var(--orange);color:var(--ink)}
     .copy-feedback{min-height:1.5em;margin:6px 0 8px;color:var(--muted);font-size:13px}.muted{color:var(--muted);font-size:15px}.install-note{margin-bottom:16px}
     .links{display:flex;flex-wrap:wrap;gap:4px 26px;font-size:15px}.links a{display:inline-flex;align-items:center;min-height:44px}
     .release-note{margin-top:14px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:13px 10px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{padding-left:0}th:last-child,td:last-child{padding-right:0}td a{display:inline-block;padding:4px 0}
     footer{margin-top:44px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
-    @media(max-width:500px){main{padding:28px 18px}header{gap:16px;padding-bottom:22px}h1{margin-top:34px}section{margin-top:32px}.section-title{align-items:flex-start;gap:14px}h2{font-size:22px}pre{padding:18px;font-size:13px}.lead{font-size:17px}th,td{padding:12px 6px}footer{margin-top:34px}}
+    @media(max-width:500px){main{padding:28px 18px}header{gap:16px;padding-bottom:22px}h1{margin-top:34px}section{margin-top:32px}h2{font-size:22px}.command-window{padding:10px;gap:4px}pre{padding:10px 8px;font-size:13px}.lead{font-size:17px}th,td{padding:12px 6px}footer{margin-top:34px}}
   </style>
 </head>
 <body><main>
@@ -103,11 +105,21 @@ function homePage(latest, versions) {
   <h1>Keep school connectivity working.</h1>
   <p class="lead">HubOS brings connectivity, power, devices, and support into a shared operational view. Run the open-source stack on your own infrastructure.</p>
   <section aria-labelledby="install-heading">
-    <div class="section-title">
-      <h2 id="install-heading">Install from your terminal</h2>
-      <button id="copy-command" type="button" aria-describedby="copy-feedback" hidden>Copy command</button>
+    <h2 id="install-heading" class="section-title">Install from your terminal</h2>
+    <div class="command-window">
+      <pre tabindex="0" role="region" aria-label="Installation command"><code id="install-command">${htmlEscape(command)}</code></pre>
+      <button class="copy-command" id="copy-command" type="button" aria-label="Copy installation command" title="Copy installation command" aria-describedby="copy-feedback" hidden>
+        <svg class="copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <title>Copy command</title><desc>Two overlapping document outlines.</desc>
+          <rect x="8" y="8" width="12" height="12" rx="2"/>
+          <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>
+        </svg>
+        <svg class="copy-success" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <title>Command copied</title><desc>A checkmark confirms the command was copied.</desc>
+          <path d="m6 12 4 4 8-8"/>
+        </svg>
+      </button>
     </div>
-    <pre tabindex="0" role="region" aria-label="Installation command"><code id="install-command">${htmlEscape(command)}</code></pre>
     <p class="copy-feedback" id="copy-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
     <p class="muted install-note">The interactive installer helps you choose credentials, checks Docker, and connects Metabase to PostgreSQL. This URL follows the latest stable release.</p>
     <nav class="links" aria-label="HubOS resources">
@@ -130,15 +142,19 @@ function homePage(latest, versions) {
   copyButton.hidden = false;
   copyButton.addEventListener("click", async () => {
     copyButton.disabled = true;
-    copyButton.textContent = "Copying…";
+    copyButton.setAttribute("aria-busy", "true");
+    copyButton.dataset.state = "idle";
+    copyButton.title = "Copying command";
     feedback.textContent = "";
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(command.textContent);
-      copyButton.textContent = "Copied";
+      copyButton.dataset.state = "copied";
+      copyButton.title = "Command copied";
       feedback.textContent = "Installation command copied.";
     } catch {
-      copyButton.textContent = "Copy command";
+      copyButton.dataset.state = "idle";
+      copyButton.title = "Copy installation command";
       feedback.textContent = "Copy unavailable. Select the command and copy it manually.";
       const selection = window.getSelection();
       if (selection) {
@@ -149,6 +165,7 @@ function homePage(latest, versions) {
       }
     } finally {
       copyButton.disabled = false;
+      copyButton.setAttribute("aria-busy", "false");
     }
   });
 </script>
