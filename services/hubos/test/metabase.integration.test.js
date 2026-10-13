@@ -24,6 +24,16 @@ const waitFor = async (check, timeout = 45000) => {
   throw new Error('Native Metabase fixture condition timed out');
 };
 
+suite('Metabase release compatibility', () => {
+  test('running version is the maintained release baseline', async () => {
+    if (metabaseUrl !== 'http://127.0.0.1:13021') throw new Error('Disposable local Metabase fixture required');
+    const response = await fetch(`${metabaseUrl}/api/session/properties`, { signal: AbortSignal.timeout(5000) });
+    expect(response.ok).toBe(true);
+    const properties = await response.json();
+    expect(properties.version?.tag).toBe('v0.64.1.7');
+  });
+});
+
 suite('Native Metabase dashboards, filters and alert routing (disposable fixture)', () => {
   let admin, store, server, env, client, first, roleName, databaseName, originalAccountId, sessionId;
   const webhookKey = 'fixture-only-metabase-webhook';
