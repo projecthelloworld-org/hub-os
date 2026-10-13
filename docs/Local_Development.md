@@ -1,92 +1,69 @@
-# HubOS local development
+# Contributor environment and testing
 
-## Deployment layers
+Use an isolated source checkout and fictional data to contribute to HubOS. Do not use a live community deployment as a test environment. See [CONTRIBUTING.md](../CONTRIBUTING.md) for code and review conventions.
 
-| File | Capability |
-|---|---|
-| `compose.yaml` | PostgreSQL, Dbmate migration, Bun API/console, Bun worker, Caddy |
-| `compose/mel.compose.yaml` | Metabase with its own application database |
-| `compose/development.compose.yaml` | Deterministic demonstration seed and Mailpit email capture |
-| `compose/ecosystem.compose.yaml` | Pinned official Headwind MDM and ODK Central Compose applications |
+## Tools and checks
 
-The normal local command merges the first three files. The ecosystem command adds the fourth. HubOS has no Valkey or Redis dependency; any Redis containers inside ODK belong to ODK's Enketo subsystem.
-
-## Synthetic demonstration
-
-The idempotent seed creates five fictional Uganda sites and five fictional Angola sites. It includes:
-
-- two UniFi and two MikroTik controller sources;
-- Innovex REMOT, Headwind MDM, ODK, and ISP-file sources;
-- verified external identifiers for every school/source relationship;
-- healthy, degraded, and critical connectivity, power, and device states;
-- one fictional high-severity connectivity incident;
-- a scheduled mock connector job that refreshes canonical telemetry.
-
-No credentials, names, or measurements come from a live school.
-
-## Start the lightweight environment
-
-```sh
-cp .env.example .env
-make compose-config
-make demo
-```
-
-| Product | Address |
-|---|---|
-| HubOS | `http://localhost:8080` |
-| Metabase | `http://localhost:3001` |
-| Mailpit | `http://localhost:8025` |
-
-The Docker engine must be running. The migration service applies `db/migrations/*.sql` before the seed, API, and worker start.
-
-## Work on HubOS custom code
-
-All custom runtime code is standard JavaScript on Bun. There is no framework or ORM code generator.
+Use the Bun version pinned by CI/container packaging, a running Docker engine and Compose 2.24 or later. No host PostgreSQL or Java installation is needed for container-based application fixtures.
 
 ```sh
 make install
 make test
 make check
+make compose-config
 ```
 
-Create and apply a database migration with the pinned Dbmate package:
+Unit tests do not require source accounts. Native integration suites are opt-in and CI provisions their disposable applications. A skipped integration suite is not a passed compatibility check.
+
+## Start the community demonstration
+
+```sh
+cp .env.example .env
+chmod 600 .env
+docker run --rm -it --network none caddy:2.11.4-alpine caddy hash-password --algorithm bcrypt
+```
+
+Choose an operator password and put the returned bcrypt hash in `.env` as a single-quoted `HUBOS_OPERATOR_PASSWORD_HASH`. Configure the username and distinct API/webhook, database, analytics and tool credentials. Preserve encryption secrets across restarts. Public examples are not deployment credentials.
+
+Review [Metabase security/compatibility guidance](Metabase_Compatibility.md) before starting or upgrading a tool image. Keep the demonstration loopback-only and entirely synthetic.
+
+```sh
+make demo
+```
+
+| Service | Default local address |
+|---|---|
+| HubOS console | `http://localhost:8080` |
+| Metabase | `http://localhost:3001` |
+| Uptime Kuma | `http://localhost:3002` |
+| Mailpit | `http://localhost:8025` |
+
+The demonstration contains five Ugandan and five Angolan sites, mixing schools, community centres and libraries. Source labels model different equipment, but synthetic data is not proof of a live vendor integration.
+
+## Compose layers
+
+| File | Responsibility |
+|---|---|
+| `compose.yaml` | Database, migrations, API/console, worker and authenticated Caddy |
+| `compose/mel.compose.yaml` | Metabase and its application database/provisioning |
+| `compose/monitoring.compose.yaml` | Kuma, provisioning and notification configuration |
+| `compose/development.compose.yaml` | Fictional seed data and local email capture |
+| `compose/ecosystem.compose.yaml` | Optional upstream Headwind and ODK applications |
+
+The standard demonstration command merges core, analytics, monitoring and demonstration layers. Redis containers belonging to ODK's Enketo subsystem are not a HubOS core dependency.
+
+## Database changes
+
+Declare schema changes as additive SQL migrations. Dbmate records applied migrations and PostgreSQL enforces constraints; do not introduce an ORM schema layer.
 
 ```sh
 cd services/hubos
 bun run db:new descriptive_change_name
-DATABASE_URL=postgresql://hubos:hubos-local-only@localhost:5432/hubos bun run db:up
 ```
 
-Once a table, constraint, index, or view is declared in SQL, Dbmate records the migration and PostgreSQL enforces it. Application queries use Bun's native PostgreSQL client directly; HubOS does not maintain ORM models in parallel with the database.
+Apply migrations using a dedicated test database and the configured `DATABASE_URL`. Test upgrades from the previous release as well as fresh databases. Never rewrite a migration already included in a published release.
 
-## Metabase automatic setup
-
-The development layer runs a one-off, idempotent Bun bootstrap after Metabase and the HubOS seed are ready. On a new application database it:
-
-- creates the first Metabase administrator;
-- names the instance `HubOS Monitoring and Evaluation`;
-- disables anonymous tracking;
-- adds `HubOS PostgreSQL` as a PostgreSQL data source;
-- limits discovery to the `analytics` and `public` schemas;
-- leaves later starts unchanged when the connection already exists.
-
-The local defaults are:
-
-```text
-Email: admin@hubos.local
-Password: hubos-local-admin-1
-```
-
-Override `METABASE_ADMIN_EMAIL`, `METABASE_ADMIN_PASSWORD`, and the `METABASE_HUBOS_*` variables in `.env` before the first start. If Metabase was already initialized, the bootstrap uses those administrator credentials to add the missing HubOS connection.
-
-Connection credentials saved by Metabase are encrypted with `METABASE_ENCRYPTION_SECRET_KEY`. Preserve that key across restarts and replace the committed local-only example before sharing a deployment. Use a dedicated read-only PostgreSQL account for shared or production environments; the local template falls back to the HubOS database account for convenience.
-
-Local Metabase email is routed to Mailpit, allowing alert and subscription testing without sending external messages.
-
-## Run ODK Central and Headwind MDM
-
-The optional applications retain their upstream build contexts, internal services, volumes, and release paths.
+## Optional upstream applications
 
 ```sh
 make ecosystem-setup
@@ -94,37 +71,21 @@ make ecosystem-config
 make ecosystem-up
 ```
 
-| Product | Address |
-|---|---|
-| Headwind MDM | `http://localhost:8081` |
-| ODK Central | `https://local:8443` |
-| HubOS | `http://localhost:8080` |
-| Metabase | `http://localhost:3001` |
-| Mailpit | `http://localhost:8025` |
+The setup helper fetches pinned upstream projects. Configure them through their upstream procedures, including initial administrator setup, domains, certificates and backups. Do not bypass password-reset policies or certificate validation. Existing externally hosted instances do not need a local duplicate.
 
-ODK uses its upstream self-signed local certificate, so a browser warning is expected. Create the first ODK administrator after the services are healthy:
+## Integration testing
 
-```sh
-docker compose \
-  -f compose.yaml \
-  -f compose/mel.compose.yaml \
-  -f compose/development.compose.yaml \
-  -f compose/ecosystem.compose.yaml \
-  exec service odk-cmd --email operator@hubos.local user-create
-```
+Fixtures use explicit project names, guarded endpoints, isolated volumes and public fictional credentials. Run only the suite matching the disposable service you started. Never point a fixture variable at a production URL.
 
-Then promote the same account by replacing `user-create` with `user-promote`.
+- `compose/test.compose.yaml`: PostgreSQL migrations, mappings, jobs, reporting permissions, incidents and upgrade preservation.
+- `compose/kuma-test.compose.yaml`: real pinned Kuma provisioning, metrics, outage/recovery hooks and Mailpit.
+- `compose/metabase-test.compose.yaml`: native dashboard queries, filters, account/resource preservation and alert delivery.
+- `compose/headwind-test.compose.yaml`: Community inventory, check-in clocks and reader permissions.
+- `compose/odk-test.compose.yaml`: API-only Central, approved OData, reader permissions and upstream form validation.
+- `compose/access-test.compose.yaml`: actual HubOS API behind authenticated Caddy.
 
-Before enrolling real devices or collecting real submissions:
+The [CI workflow](../.github/workflows/ci.yml) is the reproducible command reference. Keep test fixtures and credentials inside test tooling; user guides should explain supported operation, not recount individual runs.
 
-- configure real DNS names and HTTPS certificates;
-- replace all example passwords, API keys, and shared secrets;
-- keep source credentials in a deployment secret store;
-- set `FORCE_RECONFIGURE=false` after Headwind's first successful setup;
-- configure outbound email, encrypted backups, and restore testing;
-- review official upgrade notes before changing pinned versions;
-- give HubOS connector accounts only the permissions they need.
+The ODK runner is `bun scripts/test-odk.js` after starting its named fixture. It creates only fictional accounts/projects and verifies internal addressing, disabled external reporting and Mailpit-only email. Its API checks do not test Central's web UI or ODK Collect.
 
-## Production boundary
-
-The scaffold is not an internet-ready deployment. Production requires OIDC, tenant authorization tests, secret rotation, domain-specific Caddy configuration, encrypted off-host backups, monitoring of backup age and disk capacity, retention rules, and documented incident ownership.
+When cleaning up, specify the exact test Compose file and project. Use `down --volumes` only for disposable fixtures whose data may be destroyed. Never use an unqualified cleanup command against an installation.

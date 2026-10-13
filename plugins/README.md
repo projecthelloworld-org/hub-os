@@ -12,4 +12,4 @@ Restart API and worker after package or loader-configuration changes.
 Optional credential variables belong in the private, Git-ignored
 `config/source-secrets.env`; source settings use `env:NAME` references. A
 plugin's configuration and verified mappings are separate from its installation.
-See `docs/Connector_Plugins.md` for the lifecycle and trust requirements.
+See the [connector plugin guide](../docs/Connector_Plugins.md) for lifecycle and trust requirements.

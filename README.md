@@ -1,145 +1,62 @@
 # HubOS
 
-HubOS is an open, self-hostable operations layer for monitoring and supporting community-site connectivity. Schools are one supported site type, alongside community centres and libraries. The design combines a canonical site registry, extensible connector contract, PostgreSQL evidence model, operator console, background collection, Metabase analytics, and modular Docker Compose packaging.
+Open-source monitoring and support for shared community connectivity.
 
-The development demonstration includes ten entirely synthetic sites in Uganda and Angola. It demonstrates the product without turning a particular pilot into an architectural dependency.
+HubOS brings network, device, reachability and field-report evidence into one operational view. It helps operators see which community sites need attention, understand what the evidence supports, and coordinate a response. Schools, community centres and libraries use the same site model.
 
-The published `v0.1.0` release is a demonstration scaffold, not a fully connected or production-ready monitoring system. Only the synthetic connector is registered. Live vendor connectors, prebuilt Metabase dashboards and alert rules, automatic alert-to-incident creation, and production privacy/access controls remain unfinished. See the [implementation audit](docs/HubOS_Pilot_Ready_Technical_Design.md#11-delivered-scaffold-versus-target-architecture) for delivered capabilities and the staged roadmap.
+HubOS is self-hostable and modular. Its custom code is vanilla JavaScript on Bun; PostgreSQL holds canonical data and jobs; SQL migrations use Dbmate. Metabase provides reporting, Uptime Kuma provides reachability checks, and Caddy protects operator access. ODK Central and Headwind MDM can be hosted alongside HubOS or connected as external services.
 
-The `codex/community-monitoring-v02` development branch adds tested dashboard/alert provisioning, Uptime Kuma, trusted connector packages and read-only UniFi/Headwind/ODK clients. This does not change the published installer. Installer modes, administration, backup/restore and remaining release gates are still in progress; `v0.2.0` has not been published.
-
-## Version 1 stack
-
-- Bun 1.3.14 with vanilla JavaScript for all HubOS-owned runtime code;
-- Bun HTTP API and responsive operator console;
-- Bun connector worker with PostgreSQL-backed jobs and leases;
-- PostgreSQL 16 as the canonical, operational, and analytical store;
-- plain SQL migrations managed by Dbmate—no custom ORM or schema-management layer;
-- Caddy as the only public entry point to HubOS;
-- Metabase with automatic database connection and analytical views; dashboard and alert provisioning remain planned;
-- Mailpit for local alert testing;
-- optional pinned ODK Central and Headwind MDM Compose applications.
-
-Valkey, Celery, Prometheus, Grafana, Alertmanager, and Superset are intentionally outside Version 1. PostgreSQL already provides the durable queue needed at this scale, and Metabase is the selected tool for the planned reporting and alerting workflow. Superset remains a possible Version 2 deployment option rather than another default dependency.
-
-## Quick start
-
-Requirements: Docker Compose and a running Docker engine.
-
-For a guided server installation, run the interactive installer from a release checkout:
-
-```sh
-./install.sh
-```
-
-The hosted installer is live at [hubos.myhellohub.org](https://hubos.myhellohub.org). Install the latest stable release with:
+## Install the stable release
 
 ```sh
 curl -fsSL https://hubos.myhellohub.org/install.sh | bash
 ```
 
-The published `v0.1.0` installer checks Docker and Compose, checks available disk space and ports, gathers the Metabase administrator details without echoing the password, generates the remaining service secrets, creates a protected `.env`, starts the stack, and waits for HubOS and Metabase to become healthy. See the [installation guide](docs/Installation.md) for hosted installation, automation, upgrades, and the optional ecosystem profile.
+The installer runs interactively in your terminal, checks dependencies and verifies the release archive before extraction. Review a downloaded script before running it. See the [installation guide](docs/Installation.md) for requirements, version selection and configuration.
 
-For manual Compose testing on the **development branch**, operator authentication must be configured first:
+The latest published release is **v0.1.0**, a synthetic demonstration package. It does not include the complete monitoring capabilities described by the upcoming v0.2.0 release. Use the documentation at your installed release tag, and consult the [roadmap](docs/Roadmap.md) before selecting features for a deployment. Unpublished source changes do not alter the stable installer.
 
-```sh
-cp .env.example .env
-chmod 600 .env
-docker run --rm -it --network none caddy:2.11.4-alpine caddy hash-password --algorithm bcrypt
-```
+Before running v0.1.0, read its [Metabase security warning](docs/Metabase_Compatibility.md). Its bundled 0.60.7 image predates a critical fix and must not be exposed publicly.
 
-Choose your operator password at the prompt. Put the resulting bcrypt hash in `.env`
-as `HUBOS_OPERATOR_PASSWORD_HASH='the-generated-hash'`, keeping the single quotes.
-Set distinct generated machine keys and database/tool credentials before sharing a
-deployment. An invalid or empty operator hash makes Caddy refuse startup.
+## What the monitoring architecture provides
 
-```sh
-make demo
-```
+- A canonical community-site registry with source-scoped external identifiers.
+- A source-driven plugin interface for trusted local connector packages.
+- Metabase dashboards for operations, availability, devices, field evidence and support.
+- Reachability checks with uptime and observation coverage reported together.
+- Authenticated signals, deduplicated incidents and durable notification delivery.
+- Read-only UniFi local Network, Headwind Community and ODK Central connector modules.
+- A fully synthetic demonstration: five sites in Uganda and five in Angola.
 
-Open the addresses printed by the command:
+The demonstration is not a field trial. Device check-ins are not human usage, controller uptime is not community internet availability, and missing data is unknown—not healthy. [Monitoring definitions](docs/Monitoring_and_Alerts.md) explain these boundaries.
 
-- HubOS at `http://localhost:8080`;
-- Metabase at `http://localhost:3001`;
-- Uptime Kuma at `http://localhost:3002`;
-- Mailpit at `http://localhost:8025`.
+## Explore or contribute
 
-The development first start applies SQL migrations and seeds five fictional sites in Uganda and five in Angola, mixing schools, community centres and libraries. Canonical identifiers and observation keys are deterministic. Do not reseed a configured live deployment.
-
-The development layer also initializes Metabase and adds `HubOS PostgreSQL` automatically. With the Compose defaults, sign in with `admin@hubos.local` and `hubos-local-admin-1`. Set `METABASE_ADMIN_EMAIL` and `METABASE_ADMIN_PASSWORD` before the first start for any shared environment.
-
-The published `v0.1.0` bootstrap creates only the administrator and data source.
-Development provisioning additionally creates four dashboards, questions and native
-alert routing without overwriting tracked user-customized resources. Mailpit captures
-local alert delivery. See [monitoring and alerts](docs/Monitoring_and_Alerts.md).
-
-## Optional ODK and Headwind environment
-
-Version 1 includes ODK Central and Headwind MDM as optional, independently upgradable Compose projects:
-
-```sh
-make ecosystem-setup
-make ecosystem-config
-make ecosystem-up
-```
-
-This fetches the pinned upstream releases and runs them with HubOS, Metabase, and Mailpit. It is a deployment template: the target design also accommodates existing hosted ODK or Headwind instances.
-
-The published `v0.1.0` package has no live connectors. Development includes read-only
-clients; review [compatibility and actual test evidence](docs/Live_Connectors.md) and
-service credentials/domain configuration before connecting a real source.
-
-## Local Bun development
+Start with the [documentation index](docs/README.md). For a source checkout, follow [contributor setup](docs/Local_Development.md), including operator authentication and private credentials before starting Compose.
 
 ```sh
 make install
 make test
 make check
+make compose-config
 ```
 
-With PostgreSQL available and migrated:
+Contributions to connectors, dashboards, accessibility, translations, runbooks, deployment guidance and testing are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [plugin guide](docs/Connector_Plugins.md).
 
-```sh
-cd services/hubos
-HUBOS_DEMO_MODE=true bun run seed
-bun run dev
-```
+## Operate responsibly
 
-## API surface
+Use read-only source accounts, verified TLS for remote connections and private service bindings. Keep credentials outside reporting tables and never commit real device, respondent or browsing data. Each deployment needs an owner, an incident-response process and tested backups. Basic single-installation access controls are not multi-partner isolation or a production-security certification.
 
-- `/` — operator console;
-- `/healthz` and `/readyz` — process and database health;
-- `/api/v1/openapi.json` — machine-readable API definition;
-- `/api/v1/overview` — current operator view;
-- `/api/v1/sites` and `/api/v1/sites/{id}/status` — canonical community sites and status;
-- `/api/v1/source-connections` and `/api/v1/connectors` — integration inventory;
-- `/api/v1/incidents` — operational incidents;
-- `/api/v1/ingest/observations:batch` — authenticated, idempotent canonical ingestion.
+Read the [access guide](docs/Security_and_Access.md) and [security policy](SECURITY.md). Report vulnerabilities privately.
 
-## Extending connectors
+## Learn more
 
-A connector implements one small lifecycle—manifest, configuration validation, collection, normalisation, and health—and emits the versioned canonical envelope. The shared runner handles scheduling, numeric privacy projection, identity verification, idempotent ingestion, status updates, retries, and run history. Adding a vendor changes a trusted connector package and configuration, not the core architecture or database access pattern. See [plugin installation](docs/Connector_Plugins.md).
-
-## Safe boundary
-
-- Production mode refuses demo data and known placeholder API keys.
-- Source credentials are never stored in the public seed or raw `source_connections.config` field.
-- Metabase encrypts newly stored database connection details; replace the local example encryption key before sharing a deployment.
-- The demo contains no real school, learner, device, or network data.
-- PostgreSQL is not published to the host.
-- Connected field systems are read-only in Version 1.
-- Before production use, add OIDC, secret management, HTTPS domains, encrypted backups, tenant policy tests, and operational restore exercises.
-
-## Documentation
-
-- [Technical design](docs/HubOS_Pilot_Ready_Technical_Design.md)
-- [Open connectivity prospectus](docs/HubOS_Open_Connectivity_Prospectus.md)
-- [Local development guide](docs/Local_Development.md)
-- [Installation guide](docs/Installation.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+- [Technical design](docs/HubOS_Technical_Design.md)
+- [Project prospectus](docs/HubOS_Open_Connectivity_Prospectus.md)
+- [Connector compatibility](docs/Live_Connectors.md)
+- [Roadmap](docs/Roadmap.md)
 - [Changelog](CHANGELOG.md)
 
 ## Licence
 
-HubOS is released under the [MIT License](LICENSE). Each tagged release includes an SPDX software bill of materials and SHA-256 checksums.
+HubOS-owned code and documentation use the [MIT License](LICENSE). Third-party components retain their own licences. Tagged releases include an SPDX software bill of materials and SHA-256 checksums.

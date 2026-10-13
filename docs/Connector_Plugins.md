@@ -1,6 +1,6 @@
 # Connector plugins
 
-HubOS imports trusted local JavaScript packages; it does not download code, provide a marketplace or sandbox plugins. A plugin has the same privileges as the HubOS process. Review the package and its dependencies before enabling it.
+HubOS imports trusted local JavaScript packages; it does not download code, provide a marketplace or sandbox plugins. A plugin has the same privileges as the HubOS process. Review the package and its dependencies before enabling it. Use [domain concepts](../CONTEXT.md) for shared terminology and [source guides](Live_Connectors.md) for built-in modules.
 
 Built-ins are discovered from connector directories. Additional packages are enabled explicitly in a configuration file selected by `HUBOS_PLUGIN_CONFIG`. Copy `config/plugins/local.example.json`, provide a local package path and set `enabled` to `true`, then restart API and worker. Container installation must mount both the configuration and the reviewed package paths; a package is never fetched automatically.
 
@@ -14,7 +14,7 @@ The manifest declares `id`, `name`, semantic `version`, `protocolVersion`, `coll
 
 Collectors receive one source connection and its verified site mappings, non-secret configuration, resolved credentials, a bounded JSON request client, collection time and cancellation signal. The scheduler can scope a job to one connection; several connections can use the same plugin. Collectors may make read-only upstream requests, including APIs whose read-only searches use POST.
 
-Normalization returns `envelopes` and optionally `statuses`. Each envelope contains `schema_version: "1.0"`, connector/source IDs, an external site identifier, a stable external record ID, observation time and numeric metric records. A metric uses a dotted name, value, unit and quality. Several external identifiers can map to one canonical site. Unmapped identifiers are rejected; a plugin cannot override the canonical mapping by supplying its own HubOS ID.
+Normalization returns `envelopes` and optionally `statuses`, `monitorSamples` and `signals`. Each envelope contains `schema_version: "1.0"`, connector/source IDs, an external site identifier, a stable external record ID, observation time and numeric metric records. A metric uses a dotted name, value, unit and quality. Several external identifiers can map to one canonical site. Unmapped identifiers are rejected; a plugin cannot override the canonical mapping by supplying its own HubOS ID. Monitor samples must refer to registered source-owned monitors; signals use the common rule/subject/time/state contract.
 
 `checkConnectorConformance()` exercises a plugin with a sanitized fixture. It establishes shape/mapping compatibility only, not real-deployment compatibility. Run fixture and upstream integration tests for each supported version.
 

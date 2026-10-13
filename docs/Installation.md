@@ -1,96 +1,82 @@
-# Installing HubOS from a terminal
+# Install HubOS
 
-HubOS includes an interactive installer for system administrators. It prepares a complete core deployment, generates independent service secrets, connects Metabase to PostgreSQL, starts the containers, and verifies their health.
+HubOS provides an interactive terminal installer and a modular Docker Compose environment. Choose a published release for a reproducible installation; use a source checkout when contributing or evaluating unreleased capabilities.
 
-## Interactive installation
+**Security notice:** v0.1.0 includes Metabase 0.60.7, affected by a critical upstream advisory. Do not expose it publicly or use it for sensitive data. Read [Metabase upgrade guidance](Metabase_Compatibility.md) and the [upstream advisory](https://github.com/metabase/metabase/security/advisories/GHSA-vwf4-m7j8-wcjf).
 
-From an unpacked HubOS release:
+## Requirements
 
-```sh
-./install.sh
-```
+- A supported operating system with a running Docker engine and Compose plugin.
+- Enough memory/storage for the selected services, persistent data and backups.
+- Network access to download release assets and container images.
+- Git when fetching optional upstream ODK/Headwind deployments.
+- A person responsible for credentials, source access, updates and restoration.
 
-The installer asks for:
+The installer does not install Docker silently. Supported Ubuntu/Debian installation requires approval; on macOS, install and start your chosen Docker application first. Compose 2.24 or later is required by the optional environment-file configuration used by the source stack.
 
-- the network bind address and public ports;
-- the URL Metabase should include in alerts;
-- the Metabase administrator's name, email, and password;
-- whether Docker should be installed when it is missing on a supported Ubuntu or Debian host.
-
-Pressing Enter at the password prompt generates a strong password. PostgreSQL, API, Metabase application-database, and encryption secrets are always generated unless explicitly supplied through environment variables. All values are stored in `.env` with permissions limited to its owner.
-
-The core profile installs HubOS, PostgreSQL, Caddy, Metabase, the demonstration schools, and Mailpit. To include the independently maintained ODK Central and Headwind MDM applications:
-
-```sh
-./install.sh --profile ecosystem
-```
-
-The ecosystem profile needs `git` and considerably more memory, storage, and startup time.
-
-## Hosted one-command installation
-
-The public installer is live on GitHub Pages with a valid certificate and HTTPS enforcement. Install the latest stable release with:
+## Stable one-command installation
 
 ```sh
 curl -fsSL https://hubos.myhellohub.org/install.sh | bash
 ```
 
-Interactive input is read directly from the terminal, so piping the script does not consume the answers. The hosted installer is published over HTTPS, and its embedded `DEFAULT_RELEASE_URL` and `DEFAULT_RELEASE_SHA256` identify the versioned GitHub release archive. The installer verifies that checksum before extracting the release. A mirror or internally reviewed archive can be supplied explicitly:
+Review a downloaded script before execution. The installer reads answers from the terminal even when piped, verifies the embedded archive checksum and extracts the selected package. It asks for bind/port settings and Metabase administrator details, generates independent service secrets and creates an owner-readable `.env`.
 
-```sh
-curl -fsSL https://hubos.myhellohub.org/install.sh | \
-  HUBOS_RELEASE_URL=https://mirror.example.org/hubos-VERSION.tar.gz \
-  HUBOS_RELEASE_SHA256=THE_RELEASE_SHA256 bash
-```
+The public endpoint follows GitHub's latest stable release, excluding drafts/prereleases. It currently serves v0.1.0, a demonstration package—not the full upcoming monitoring release. [The roadmap](Roadmap.md) defines that distinction.
 
-The public URL follows GitHub's latest stable HubOS release. Drafts, prereleases, and unpublished changes on `main` are excluded. To install a specific version:
+For a fixed release:
 
 ```sh
 curl -fsSL https://hubos.myhellohub.org/releases/v0.1.0/install.sh | bash
 ```
 
-### Maintaining the GitHub Pages publication
+The installer is a separate release asset, excluded from the checksum-sealed archive. Download it alongside an unpacked release, or use the versioned URL above. From a release checkout containing the script, run `./install.sh`. Use `./install.sh --help` for its exact options. `--profile ecosystem` includes optional ODK Central and Headwind MDM; these require additional resources and upstream configuration.
 
-The `Publish installer` workflow runs after the `Release` workflow succeeds and can also be run manually from GitHub Actions. It downloads the installers from published stable tags, verifies their embedded versions and archive URLs against the release assets, checks each archive's actual SHA-256, and validates Bash syntax before deploying. Any inconsistent release stops publication, preserving the currently deployed site.
+## Source checkout and demonstration
 
-GitHub Pages uses GitHub Actions as its publishing source and `hubos.myhellohub.org` as its custom domain. Register that domain in repository Settings → Pages before updating Cloudflare. The DNS configuration is a DNS-only CNAME named `hubos` pointing to `projecthelloworld-org.github.io`; it replaces conflicting A or AAAA records for the same hostname. Enable Enforce HTTPS once GitHub provisions the certificate.
+Follow [contributor setup](Local_Development.md) rather than assuming that an installer from an unreleased checkout has the same contract as a published package. Configure operator authentication and private credentials before starting the source Compose stack.
 
-The Pages payload contains the home page and verified installers. Release archives, SBOMs, and checksum manifests remain hosted as GitHub release assets. To rebuild the payload locally:
+Default local addresses are HubOS `http://localhost:8080`, Metabase `http://localhost:3001`, Kuma `http://localhost:3002` and Mailpit `http://localhost:8025`. Tool availability depends on the installed release and enabled layers.
 
-```sh
-bun run scripts/build-pages.js
-```
+Synthetic demonstration records must stay separate from live data. Do not reseed a live deployment or interpret generated faults as field observations.
 
-Generated files are written to the ignored `dist/pages` directory. After deployment, compare the public script with its release-tag version and run `bash install.sh --help` before declaring the endpoint live.
+## Unattended installation
 
-Administrators should inspect a downloaded installer before running it with elevated privileges. HubOS does not install Docker silently. On Ubuntu and Debian, the operator must approve installation from Docker's official package repository. On macOS, the installer directs the operator to install and start Docker Desktop.
-
-## Automated installation
-
-For configuration management or unattended test hosts, provide settings in the environment:
+Provide release-supported settings through a protected environment or secret manager. For the v0.1.0 installer:
 
 ```sh
 METABASE_ADMIN_EMAIL=operator@example.org \
-METABASE_ADMIN_PASSWORD='use-a-secret-manager' \
-HUBOS_BIND_ADDRESS=0.0.0.0 \
+METABASE_ADMIN_PASSWORD='replace-with-a-private-secret' \
+HUBOS_BIND_ADDRESS=127.0.0.1 \
 ./install.sh --non-interactive --yes
 ```
 
-Omitted service secrets are generated securely. Use `--no-start` to create and validate the configuration without starting containers. Use `--install-dir PATH` when a downloaded release should live outside the default `$HOME/hubos` directory.
+Do not store actual secrets in shell history, shared logs or example files. Omitted supported service secrets are generated. `--no-start` prepares configuration without starting containers; `--install-dir PATH` selects the installation directory.
 
-## Existing installations
+A reviewed mirror archive requires both `HUBOS_RELEASE_URL` and its verified `HUBOS_RELEASE_SHA256`. Changing the URL does not waive checksum validation.
 
-Re-running the installer detects and preserves an existing `.env`; this prevents accidental rotation of passwords that are already attached to persistent PostgreSQL volumes. It validates the current Compose configuration and starts or repairs the declared services. Database credential rotation must use a documented rotation procedure rather than replacing `.env` alone.
+## Existing installations and upgrades
 
-The installer does not remove containers, volumes, databases, dashboards, or existing credentials. Before upgrading, back up:
+The installer preserves an existing `.env` rather than silently rotating credentials attached to persistent databases. Changing a database password in `.env` alone does not rotate the password in that database.
 
-- the installation directory, especially `.env`;
-- the `postgres-data` volume;
-- the `metabase-db-data` volume;
-- ODK and Headwind data when the ecosystem profile is enabled.
+Before an upgrade, preserve:
 
-## Production boundary
+- HubOS PostgreSQL and Metabase application databases.
+- Installation configuration, source secret files and encryption keys.
+- Kuma data and HubOS-managed secret storage where present.
+- Caddy certificate/configuration storage.
+- Optional ODK/Headwind data according to upstream backup procedures.
 
-The generated deployment is suitable for local evaluation and controlled internal networks. Before binding it to a public interface, configure HTTPS domains in Caddy, external identity or OIDC, firewall rules, restricted administrator access, encrypted off-host backups, monitoring of backup restoration, and a production secret manager.
+Restore rehearsal must use fresh isolated volumes, not the running installation. Preserve tool encryption secrets and use matching images when restoring. Follow [Metabase upgrade/rollback guidance](Metabase_Compatibility.md); do not attach an experimental version to an original database.
 
-Docker publishes configured container ports before some host firewall rule sets. Review Docker's firewall behavior and expose only the intended HubOS entry points.
+## Remote exposure
+
+Keep direct tool/database ports private. Remote access needs verified TLS, deliberate DNS/listener configuration, strong credentials, reviewed firewall exposure and a tested recovery plan. [The access guide](Security_and_Access.md) explains the trusted boundary and its limitations.
+
+Docker's published ports can interact with host firewall rules differently from ordinary host processes. Review the effective exposure rather than assuming a host firewall protects every published port.
+
+## Installer publication
+
+Release maintainers use the `Release` and `Publish installer` workflows. Publication validates installer metadata, archive checksums and Bash syntax before deploying the Pages payload. Archives, SBOMs and checksum manifests stay in GitHub release assets.
+
+The public installer domain is distinct from operator deployment domains. Its Pages custom-domain/DNS settings belong to project maintenance, not a requirement for self-hosting HubOS. See the [release checklist](../.github/RELEASE_CHECKLIST.md).
