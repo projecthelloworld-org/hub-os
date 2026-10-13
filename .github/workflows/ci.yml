@@ -39,6 +39,12 @@ jobs:
           # Installed HubOS services retain private loopback bindings by default.
           HUBOS_TEST_CALLBACK_BIND: 0.0.0.0
       - run: bun run check
+      - name: Report isolated integration service diagnostics
+        if: failure()
+        working-directory: .
+        run: |
+          docker compose -p hubos-ci-metabase-test -f compose/metabase-test.compose.yaml logs --tail=120 metabase
+          docker compose -p hubos-ci-kuma-test -f compose/kuma-test.compose.yaml logs --tail=80 kuma
       - name: Validate Pages builder syntax
         working-directory: .
         run: bun build scripts/build-pages.js --target=bun --outfile=/tmp/hubos-pages-build.js

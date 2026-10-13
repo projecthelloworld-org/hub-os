@@ -104,4 +104,23 @@ suite('Reporting views and enforced read-only access', () => {
       WHERE source_connection_id = ${secondSource} AND rule_id = 'collection-freshness'`)[0].state).toBe('unknown');
     expect((await store.listSourceConnections()).find((source) => String(source.id) === secondSource).status).toBe('unknown');
   });
+
+  test('report validity and collector freshness are separate; stale sites remain in current-date reporting', async () => {
+    await store.db`DELETE FROM observations WHERE source_connection_id = ${firstSource} AND metric = 'field.report.fault.count'`;
+    await store.db`UPDATE source_connections SET config = config || '{"evidence_max_age_seconds":604800}'::jsonb,
+      last_success_at = now() WHERE id = ${firstSource}`;
+    await record(firstSource, 'field.report.fault.count', 2, new Date(Date.now() - 86400000));
+    const fault = async () => (await reporting`SELECT fault_count FROM analytics.field_evidence WHERE source_connection_id = ${firstSource}`)[0].fault_count;
+    expect(await fault()).toBe(2);
+    await store.db`UPDATE source_connections SET last_success_at = now() - interval '1 hour' WHERE id = ${firstSource}`;
+    expect(await fault()).toBeNull();
+    await store.db`INSERT INTO status_snapshots (site_id,domain,status,reason,observed_at,rule_version)
+      VALUES (${siteId},'connectivity','healthy','Old evidence',now() - interval '45 days','fixture')
+      ON CONFLICT (site_id,domain) DO UPDATE SET observed_at = EXCLUDED.observed_at`;
+    const rows = await reporting`SELECT connectivity FROM analytics.community_operations WHERE as_of >= now() - interval '30 days'`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].connectivity).toBe('unknown');
+    expect((await reporting`SELECT freshness FROM analytics.collection_status
+      WHERE source_connection_id = ${firstSource} AND as_of >= now() - interval '30 days'`)[0].freshness).toBe('stale');
+  });
 });

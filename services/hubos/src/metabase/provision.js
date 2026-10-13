@@ -12,7 +12,10 @@ async function waitForMetadata(client, databaseId) {
   for (let attempt = 0; attempt < 60; attempt++) {
     const metadata = await client(`/api/database/${databaseId}/metadata`);
     const tables = metadata.tables ?? [];
-    if ([...required].every((name) => tables.some((table) => table.schema === 'analytics' && table.name === name && table.fields?.length))) {
+    if ([...required].every((name) => tables.some((table) => table.schema === 'analytics' && table.name === name
+      && questions.filter((item) => item.view === name).every((item) =>
+        [item.dateField, ...(item.siteFilters === false ? [] : ['site_code', 'country_code'])]
+          .every((field) => table.fields?.some((value) => value.name === field)))))) {
       return (view, column) => {
         const field = tables.find((table) => table.schema === 'analytics' && table.name === view)?.fields.find((field) => field.name === column);
         if (!field) throw new CollectionError('METABASE_REPORT_FIELD_MISSING');
@@ -99,7 +102,7 @@ export async function provisionMetabaseMonitoring({ store, env = process.env, fe
       for (const definition of dashboards) {
         const note = core.demoMode ? 'Contains ten fictional Uganda/Angola community sites; synthetic evidence is labelled. ' : '';
         const dashboard = await managed(client, registry, 'dashboard', definition.key, '/api/dashboard', {
-          name: definition.name, description: note + 'HubOS community-site operational evidence. UTC dates; unknown is not healthy.',
+          name: definition.name, description: note + 'HubOS community-site operational evidence. UTC reporting dates filter current cards by evaluation time and history cards by evidence time; current cards do not reconstruct past status. Unknown is not healthy.',
           collection_id: collection.id, parameters: dashboardParameters(),
         }, { allocate: true });
         if (!dashboard.provisioned && !dashboard.resource.dashcards?.length) {

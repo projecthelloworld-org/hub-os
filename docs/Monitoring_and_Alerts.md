@@ -1,5 +1,12 @@
 # Monitoring and alerts
 
+Current-status dashboard cards filter on their evaluation time (`as_of`), while
+historical cards filter evidence/event dates. This keeps old, stale and never-collected
+sites visible under the default current reporting period. Current cards do not
+reconstruct past state. Observation timestamps remain visible, and unknown is not
+healthy. Plugins may declare `evidence_max_age_seconds` independently of polling
+freshness; both report validity and successful collection must then be current.
+
 Implementation in progress for v0.2.0. Native Metabase setup, filter queries and fault/recovery delivery have been exercised locally alongside the Kuma/incident path. The complete installer, final rendered templates, supported upstream version review and backup flow remain release gates.
 
 ## Reachability is not community internet availability

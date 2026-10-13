@@ -27,6 +27,7 @@ const waitFor = async (check, timeout = 45000) => {
 suite('Native Metabase dashboards, filters and alert routing (disposable fixture)', () => {
   let admin, store, server, env, client, first, roleName, databaseName, originalAccountId;
   const webhookKey = 'fixture-only-metabase-webhook';
+  const callbacks = [];
   beforeAll(async () => {
     const base = new URL(databaseUrl);
     if (base.pathname !== '/hubos_test' || !['127.0.0.1', 'localhost'].includes(base.hostname)
@@ -45,8 +46,13 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
       await store.db.unsafe((await Bun.file(new URL(file, directory)).text()).split('-- migrate:down')[0]);
     }
     await store.seedDemo(buildDemoState(new Date()));
+    const receiver = createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), resolveSecrets: async () => ({ webhookKey }) });
     server = Bun.serve({ hostname: process.env.HUBOS_TEST_CALLBACK_BIND ?? '127.0.0.1', port: 13024,
-      fetch: createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), resolveSecrets: async () => ({ webhookKey }) }) });
+      fetch: async (request) => {
+        const response = await receiver(request);
+        callbacks.push({ path: new URL(request.url).pathname, status: response.status });
+        return response;
+      } });
     env = {
       HUBOS_DATABASE_URL: base.href, HUBOS_DEMO_MODE: 'true', METABASE_URL: metabaseUrl,
       METABASE_ADMIN_EMAIL: 'fixture-admin@local.test', METABASE_ADMIN_PASSWORD: 'Fixture-Metabase-Password-2026!',
@@ -136,8 +142,9 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
       external_record_id: 'extra-plugin-fixture', value: 27.5, unit: 'celsius', quality: 'valid', observed_at: new Date(), attributes: { synthetic: true } }]);
     const generic = await query('plugin-telemetry');
     expect(generic.data.rows.some((row) => row.includes('environment.temperature.celsius') && row.includes(27.5))).toBe(true);
-    await store.db`UPDATE status_snapshots SET observed_at = now() - interval '1 hour' WHERE site_id = ${siteId}`;
-    const stale = await query('operations-sites', [parameter('site', ['UG-DEMO-01'])]);
+    await store.db`UPDATE status_snapshots SET observed_at = now() - interval '45 days' WHERE site_id = ${siteId}`;
+    const stale = await query('operations-sites', [parameter('site', ['UG-DEMO-01']), parameter('date', 'past30days~')]);
+    expect(stale.data.rows).toHaveLength(1);
     expect(stale.data.rows[0].slice(4, 7)).toEqual(['unknown', 'unknown', 'unknown']);
   }, 180000);
 
@@ -152,7 +159,11 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     const sendNative = async (key) => client(`/api/notification/${await resource('notification', key)}/send`, { method: 'POST', body: {} });
     await record(2);
     await sendNative('field-fault-active');
-    await waitFor(async () => (await store.db`SELECT id FROM incidents WHERE rule_id = 'field-fault' AND site_id = ${site.id}`).length === 1);
+    try {
+      await waitFor(async () => (await store.db`SELECT id FROM incidents WHERE rule_id = 'field-fault' AND site_id = ${site.id}`).length === 1);
+    } catch (error) {
+      throw new Error(`Native Metabase opening failed: callbacks=${JSON.stringify(callbacks)}; ${error.message}`);
+    }
     const [incident] = await store.db`SELECT id FROM incidents WHERE rule_id = 'field-fault' AND site_id = ${site.id}`;
     await sendNative('field-fault-active');
     await sendNative('field-fault-active');

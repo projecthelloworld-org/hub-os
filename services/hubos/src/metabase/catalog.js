@@ -1,7 +1,8 @@
 import { stableId } from '../ids.js';
 
 const question = (key, name, view, select, tail = '', options = {}) => ({
-  key, name, view, select, tail, display: 'table', dateField: 'observed_at', ...options,
+  key, name, view, select, tail, display: 'table',
+  dateField: ['community_operations', 'metric_current', 'device_evidence', 'field_evidence', 'collection_status', 'monitor_current'].includes(view) ? 'as_of' : 'observed_at', ...options,
 });
 
 export const questions = [
@@ -53,7 +54,7 @@ export const questions = [
   question('collection-status', 'Collection freshness and source coverage', 'collection_status',
     'site_code, freshness, source_name, plugin_id, enabled, last_success_at, freshness_seconds, synthetic',
     'ORDER BY freshness, site_code, source_name',
-    { dateField: 'last_success_at', description: 'Current collector freshness, not network health. Disabled and never-collected sources are explicit; multiple mappings do not multiply source/site rows.' }),
+    { description: 'Current collector freshness, not network health. Disabled, stale and never-collected sources remain visible; multiple mappings do not multiply source/site rows.' }),
   question('support-history', 'Incident history', 'incident_history',
     'site_code, status, severity, title, owner, started_at, resolved_at, signal_count, scope, synthetic, id AS incident_id',
     'ORDER BY started_at DESC LIMIT 1000',
@@ -89,7 +90,7 @@ export function dashboardParameters() {
     { id: 'hubos-site', name: 'Community site', slug: 'site', type: 'string/=' },
     { id: 'hubos-country', name: 'Country', slug: 'country', type: 'string/=' },
     // Metabase excludes today without the trailing '~' (include current period).
-    { id: 'hubos-date', name: 'Evidence date (UTC)', slug: 'date', type: 'date/all-options', default: 'past30days~' },
+    { id: 'hubos-date', name: 'Reporting date (UTC)', slug: 'date', type: 'date/all-options', default: 'past30days~' },
   ];
 }
 

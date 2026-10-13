@@ -1,8 +1,9 @@
 export class CollectionError extends Error {
-  constructor(code, { retryAfterSeconds = null } = {}) {
+  constructor(code, { retryAfterSeconds = null, httpStatus = null } = {}) {
     super(code);
     this.code = code;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -20,7 +21,7 @@ export function createHttpClient({ fetchImpl = fetch, timeoutMs = 15000, maximum
     try {
       const response = await fetchImpl(parsed, { ...options, redirect: 'error', signal });
       if (!response.ok) {
-        if ([401, 403].includes(response.status)) throw new CollectionError('SOURCE_AUTHENTICATION_FAILED');
+        if ([401, 403].includes(response.status)) throw new CollectionError('SOURCE_AUTHENTICATION_FAILED', { httpStatus: response.status });
         if (response.status === 429) {
           const raw = response.headers.get('retry-after');
           const seconds = /^\d+$/.test(raw ?? '') ? Number(raw) : Math.ceil((Date.parse(raw) - Date.now()) / 1000);
