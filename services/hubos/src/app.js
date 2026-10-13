@@ -32,6 +32,13 @@ function requireApiKey(request, config, kind) {
   if (!requestHasKey(request, ...settings)) {
     throw Object.assign(new Error(`Valid ${kind} API key required`), { status: 401 });
   }
+  if (kind === 'admin') {
+    const origin = request.headers.get('origin');
+    const expected = config.operatorOrigin ?? new URL(request.url).origin;
+    if ((origin !== null && origin !== expected) || request.headers.get('sec-fetch-site') === 'cross-site') {
+      throw Object.assign(new Error('Cross-origin operator writes are not allowed'), { status: 403 });
+    }
+  }
 }
 
 function errorResponse(error) {

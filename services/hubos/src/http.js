@@ -16,13 +16,33 @@ export function text(body, contentType, status = 200, headers = {}) {
 
 export async function readJson(request, { allowEmpty = false } = {}) {
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
+  if (contentType.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
     throw Object.assign(new Error("Content-Type must be application/json"), { status: 415 });
   }
+  const maxBytes = 1024 * 1024;
+  const tooLarge = Object.assign(new Error('Request body exceeds the 1 MiB limit'), { status: 413 });
+  if (Number(request.headers.get('content-length')) > maxBytes) throw tooLarge;
   try {
-    const body = await request.text();
+    const chunks = [], decoder = new TextDecoder('utf-8', { fatal: true });
+    const reader = request.body?.getReader();
+    let size = 0;
+    if (reader) {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) {
+          void reader.cancel().catch(() => {});
+          throw tooLarge;
+        }
+        chunks.push(decoder.decode(value, { stream: true }));
+      }
+    }
+    chunks.push(decoder.decode());
+    const body = chunks.join('');
     return allowEmpty && !body.trim() ? {} : JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error === tooLarge) throw error;
     throw Object.assign(new Error("Request body must contain valid JSON"), { status: 400 });
   }
 }

@@ -83,6 +83,30 @@ describe("read API", () => {
 });
 
 describe("protected write API", () => {
+  test('operator writes reject foreign and opaque origins while accepting same-origin and non-browser clients', async () => {
+    const incidentId = buildDemoState(fixedDate).incidents[0].id;
+    const path = `/api/v1/incidents/${incidentId}/acknowledge`;
+    const body = JSON.stringify({ owner: 'Fixture operations' });
+    const headers = { 'content-type': 'application/json', 'x-hubos-admin-key': 'test-admin-key' };
+    for (const origin of ['https://foreign.example.invalid', 'null', 'not-a-url']) {
+      expect((await request(path, { method: 'POST', headers: { ...headers, origin }, body })).status).toBe(403);
+    }
+    expect((await request(path, { method: 'POST', headers: { ...headers, 'sec-fetch-site': 'cross-site' }, body })).status).toBe(403);
+    expect((await request(path, { method: 'POST', headers: { ...headers, origin: 'http://hubos.test' }, body })).status).toBe(200);
+    expect((await request(path, { method: 'POST', headers, body })).status).toBe(200);
+    expect((await request(path, { method: 'POST', headers: { ...headers, origin: 'http://hubos.test',
+      'content-type': 'text/plain; charset=application/json' }, body })).status).toBe(415);
+  });
+  test('oversized authenticated JSON bodies are rejected before field validation', async () => {
+    const incidentId = buildDemoState(fixedDate).incidents[0].id;
+    const headers = { 'content-type': 'application/json', 'x-hubos-admin-key': 'test-admin-key' };
+    const oversized = JSON.stringify({ owner: 'x'.repeat(1024 * 1024) });
+    expect((await request(`/api/v1/incidents/${incidentId}/acknowledge`, { method: 'POST', headers, body: oversized })).status).toBe(413);
+    expect((await request(`/api/v1/incidents/${incidentId}/acknowledge`, { method: 'POST',
+      headers: { ...headers, 'content-length': '1' }, body: oversized })).status).toBe(413);
+    expect((await request(`/api/v1/incidents/${incidentId}/acknowledge`, { method: 'POST',
+      headers: { ...headers, 'content-length': String(1024 * 1024 + 1) }, body: '{"owner":"small"}' })).status).toBe(413);
+  });
   test("requires an ingest key and makes batches idempotent", async () => {
     const demo = buildDemoState(fixedDate);
     const source = demo.sourceConnections[0];

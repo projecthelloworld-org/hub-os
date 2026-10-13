@@ -1,4 +1,4 @@
-:80 {
+{$HUBOS_SITE_ADDRESS::80} {
   encode zstd gzip
 
   header {
@@ -9,5 +9,52 @@
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
   }
 
-  reverse_proxy api:3000
+  @health {
+    method GET
+    path /healthz /readyz
+  }
+  @ingest {
+    method POST
+    path /api/v1/ingest/observations:batch
+  }
+  @source_webhook {
+    method POST
+    path_regexp source_webhook ^/api/v1/source-connections/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/webhook$
+  }
+
+  route {
+    handle @health {
+      reverse_proxy api:3000 {
+        header_up -Authorization
+        header_up -X-HubOS-Admin-Key
+        header_up -X-HubOS-Ingest-Key
+        header_up -X-HubOS-Webhook-Key
+      }
+    }
+    handle @ingest {
+      reverse_proxy api:3000 {
+        header_up -Authorization
+        header_up -X-HubOS-Admin-Key
+        header_up -X-HubOS-Webhook-Key
+      }
+    }
+    handle @source_webhook {
+      reverse_proxy api:3000 {
+        header_up -Authorization
+        header_up -X-HubOS-Admin-Key
+        header_up -X-HubOS-Ingest-Key
+      }
+    }
+    handle {
+      basic_auth bcrypt "HubOS operators" {
+        {env.HUBOS_OPERATOR_USERNAME} {env.HUBOS_OPERATOR_PASSWORD_HASH}
+      }
+      reverse_proxy api:3000 {
+        header_up -Authorization
+        header_up -X-HubOS-Ingest-Key
+        header_up -X-HubOS-Webhook-Key
+        header_up X-HubOS-Admin-Key {env.HUBOS_ADMIN_KEY}
+      }
+    }
+  }
 }

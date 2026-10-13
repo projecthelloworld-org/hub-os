@@ -2,11 +2,15 @@ name: hubos
 
 x-hubos-environment: &hubos-environment
   HUBOS_ENV: ${HUBOS_ENV:-development}
+  # Listen on the container network, never a directly published API host port.
+  HUBOS_HOST: 0.0.0.0
   HUBOS_DATABASE_URL: ${HUBOS_DATABASE_URL:-postgresql://hubos:hubos-local-only@db:5432/hubos}
   HUBOS_DEMO_MODE: ${HUBOS_DEMO_MODE:-false}
   HUBOS_INGEST_KEY: ${HUBOS_INGEST_KEY:-local-demo-ingest-key}
   HUBOS_ADMIN_KEY: ${HUBOS_ADMIN_KEY:-local-demo-admin-key}
   HUBOS_OPERATOR_CONSOLE_ENABLED: ${HUBOS_OPERATOR_CONSOLE_ENABLED:-true}
+  HUBOS_SITE_ADDRESS: ${HUBOS_SITE_ADDRESS:-:80}
+  HUBOS_BIND_ADDRESS: ${HUBOS_BIND_ADDRESS:-127.0.0.1}
   HUBOS_PLUGIN_CONFIG: ${HUBOS_PLUGIN_CONFIG:-/config/plugins/local.example.json}
 
 x-hubos-service: &hubos-service
@@ -77,11 +81,18 @@ services:
         condition: service_completed_successfully
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    environment:
+      HUBOS_SITE_ADDRESS: ${HUBOS_SITE_ADDRESS:-:80}
+      HUBOS_OPERATOR_USERNAME: ${HUBOS_OPERATOR_USERNAME:-operator}
+      HUBOS_OPERATOR_PASSWORD_HASH: ${HUBOS_OPERATOR_PASSWORD_HASH:-}
+      HUBOS_ADMIN_KEY: ${HUBOS_ADMIN_KEY:-local-demo-admin-key}
     ports:
       - "${HUBOS_BIND_ADDRESS:-127.0.0.1}:${HUBOS_HTTP_PORT:-8080}:80"
     volumes:
       - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
     depends_on:
       api:
         condition: service_healthy
@@ -98,3 +109,5 @@ networks:
 
 volumes:
   postgres-data:
+  caddy-data:
+  caddy-config:
