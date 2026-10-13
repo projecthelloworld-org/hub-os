@@ -24,6 +24,16 @@ suite('PostgreSQL source-driven runtime (isolated integration)', () => {
   });
   afterAll(async () => { await store?.close(); });
 
+  test('Bun persists JSON documents rather than double-encoded strings', async () => {
+    for (const [table, column] of [['source_connections', 'config'], ['connector_jobs', 'payload'],
+      ['observations', 'attributes'], ['incidents', 'details']]) {
+      const rows = await store.db.unsafe(`SELECT DISTINCT jsonb_typeof(${column}) AS type FROM ${table}`);
+      expect(rows.map((row) => row.type)).toEqual(['object']);
+    }
+    const [row] = await store.db`SELECT attributes->>'synthetic' AS synthetic FROM observations LIMIT 1`;
+    expect(row.synthetic).toBe('true');
+  });
+
   test('many external identifiers map to one canonical site without duplicating target populations', async () => {
     const sites = await store.listSites('UG');
     const sourceId = stableId('source', 'ug-unifi');
@@ -112,7 +122,7 @@ suite('PostgreSQL source-driven runtime (isolated integration)', () => {
       await legacy`INSERT INTO sites (id, organisation_id, site_code, name, country_code)
         VALUES (${siteId}, ${orgId}, 'EXISTING-01', 'Existing community site', 'UG')`;
       await legacy`INSERT INTO source_connections (id, organisation_id, name, connector_type, collection_mode, config)
-        VALUES (${sourceId}, ${orgId}, 'Existing source', 'headwind', 'api_pull', '{"group_id":7}'::jsonb)`;
+        VALUES (${sourceId}, ${orgId}, 'Existing source', 'headwind', 'api_pull', to_jsonb('{"group_id":7}'::text))`;
       await legacy`INSERT INTO external_identifiers (id, source_connection_id, entity_type, entity_id, external_id, verified)
         VALUES (${mappingId}, ${sourceId}, 'site', ${siteId}, 'legacy-id', true)`;
       await legacy`INSERT INTO observations (site_id, source_connection_id, external_record_id, metric, value, observed_at)

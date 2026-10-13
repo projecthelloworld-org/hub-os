@@ -1,6 +1,6 @@
 # Monitoring and alerts
 
-Implementation in progress for v0.2.0. This document describes the locally exercised Kuma and incident path; Metabase data-alert provisioning and the complete installer/backup flow remain separate release gates.
+Implementation in progress for v0.2.0. Native Metabase setup, filter queries and fault/recovery delivery have been exercised locally alongside the Kuma/incident path. The complete installer, final rendered templates, supported upstream version review and backup flow remain release gates.
 
 ## Reachability is not community internet availability
 
@@ -34,7 +34,21 @@ Daily reporting uses UTC boundaries. Combined uptime and coverage must use summe
 
 Kuma's authenticated webhook enters `/api/v1/source-connections/{sourceId}/webhook`. The installed plugin projects the vendor message into validated monitor samples and operational signals; core code has no vendor-specific webhook handler. The source-specific `x-hubos-webhook-key` is distinct from browser/operator and observation-ingest credentials.
 
-Signals have a configured rule, mapped site or monitor, timestamp and active/healthy/unknown state. Rules are availability, collection freshness, managed-device check-in and operational field faults. Metabase will own data-based alert evaluation; silence from any evaluator never marks a fault recovered.
+Signals have a configured rule, mapped site or monitor, timestamp and active/healthy/unknown state. Rules are availability, collection freshness, managed-device check-in and operational field faults. Metabase owns data-based alert evaluation; silence from any evaluator never marks a fault recovered.
+
+## Native Metabase reporting and data alerts
+
+Provisioning creates four dashboards: Community Operations, Availability & Connectivity, Devices & Field Evidence, and Collection & Support. Fifteen questions use only analytics views, with community-site, country and UTC-date filters. The default rolling period includes today. Infrastructure checks explicitly ignore community-site/country filters and remain separate from community connectivity. Generic telemetry includes new canonical plugin metrics without a vendor-specific schema.
+
+The reporting login can select analytics views but cannot read raw configuration tables or modify persistent application data. It uses UTC and defaults to read-only transactions. Credentials remain in private deployment settings and the tool connection, not reporting views. Existing administrator accounts and uniquely identified PostgreSQL connections are retained; a missing tracked or ambiguous connection requires review rather than silent replacement.
+
+Owned resource IDs track two collections, four dashboards, fifteen reporting questions, eight active/healthy rule questions, one authenticated HTTP channel and eight native notifications. Repeat setup preserves existing question/dashboard edits. Templates are initial defaults, not a remote reset mechanism for user-customised layouts. Incomplete dashboard allocation can resume after an interrupted first setup.
+
+Each site/rule combines its source evidence. Any supported fault can activate the rule; all relevant conditions must be explicitly healthy to recover. Missing, stale, disabled or invalid conditions prevent false recovery. `freshness_seconds` sets a source's collection limit; source configuration `alert_thresholds.stale_device_count` and `alert_thresholds.fault_count` set non-negative count thresholds (default zero). Kuma cadence/retries govern reachability thresholds. Read-time site status expires after five minutes; evidence more than one minute ahead of the clock is unknown, not healthy.
+
+Metabase sends native `has_result` notifications repeatedly through a private-header-authenticated, source-scoped HubOS webhook. Approved question IDs determine the rule/state; creator names, image data, question URLs and unapproved columns are discarded. Empty channel tests are not health evidence. Core incidents/outbox coordination is shared with Kuma, not duplicated inside the dashboards.
+
+The exercised compatibility baseline is Metabase v0.60.7. Its upstream support/security status must be reviewed and the chosen release version reverified before v0.2.0 publication; these checks are not a claim of production readiness.
 
 An active signal opens one incident. Further active signals update it while preserving acknowledgement and ownership. Older or equal-time signals are ignored. Only newer, explicit healthy evidence records recovery. Unknown evidence preserves an existing incident without sending another opening message. A later new outage after recovery opens a new incident.
 
@@ -49,3 +63,5 @@ The isolated fixture uses `compose/test.compose.yaml` for PostgreSQL and `compos
 Run database migrations, start the Kuma fixture, then run the tests from `services/hubos` with `HUBOS_TEST_DATABASE_URL=postgresql://hubos_test:fixture-only-not-for-deployment@127.0.0.1:15432/hubos_test` and `HUBOS_TEST_KUMA_URL=http://127.0.0.1:13002`. CI binds only its ephemeral callback receiver to the Docker host gateway; installed HubOS ports default to loopback.
 
 The fixture metrics key `/tmp/hubos-kuma-fixture-metrics.key` belongs to its test volume. Reset both together when starting a fresh fixture; never use this cleanup procedure for a real Kuma deployment. Consistency-safe backup/restore tooling, with a brief Kuma maintenance pause, is still a release gate and must not be inferred from these integration checks.
+
+`compose/metabase-test.compose.yaml` adds a disposable native Metabase instance at `http://127.0.0.1:13021`. Run `test/metabase.integration.test.js` with the same database fixture, `HUBOS_TEST_METABASE_URL=http://127.0.0.1:13021` and the Kuma fixture's Mailpit. It requires a fresh Metabase volume, creates a random reporting database/role, exercises a retained legacy account/connection, repeat setup, real saved queries and native webhook/mail delivery, then removes only its own reporting database/role. CI exposes only its ephemeral callback receiver through the Docker host gateway; the fresh fixture refuses to run against another URL or an already-configured account.

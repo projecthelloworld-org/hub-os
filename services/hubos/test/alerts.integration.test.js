@@ -29,8 +29,10 @@ suite('PostgreSQL incident ledger and coverage', () => {
     const signal = { rule_id: 'availability', subject_type: 'monitor', subject_id: String(monitor.id), state: 'active', observed_at: new Date(base).toISOString() };
     const results = await Promise.all(Array.from({ length: 8 }, () => store.applySignal(sourceId, signal)));
     expect(results.filter((result) => result.transition === 'opened')).toHaveLength(1);
+    expect(results.filter((result) => result.transition === 'ignored')).toHaveLength(7);
     const [incident] = await store.db`SELECT * FROM incidents WHERE source_connection_id = ${sourceId}`;
     expect(incident.site_id).toBeNull();
+    expect(incident.signal_count).toBe(1);
     expect((await store.db`SELECT * FROM notification_outbox WHERE incident_id = ${incident.id}`)).toHaveLength(1);
     await store.acknowledgeIncident(String(incident.id), 'support-queue');
     await store.applySignal(sourceId, { ...signal, observed_at: new Date(base + 1000), state: 'unknown' });

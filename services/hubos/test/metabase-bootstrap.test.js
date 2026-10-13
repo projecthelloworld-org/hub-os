@@ -103,4 +103,24 @@ describe("Metabase bootstrap", () => {
     expect(result).toEqual({ status: "configured", databaseId: 7 });
     expect(requests).toHaveLength(5);
   });
+
+  test('adopts a uniquely matching renamed legacy datasource without creating a duplicate', async () => {
+    const methods = [];
+    const fetchImpl = async (url, options = {}) => {
+      methods.push(options.method ?? 'GET');
+      if (url.endsWith('/api/session/properties')) return Response.json({ 'setup-token': null });
+      if (url.endsWith('/api/session')) return Response.json({ id: 'fixture-session' });
+      if (url.endsWith('/api/database')) return Response.json({ data: [{ id: 8, name: 'My reporting connection', engine: 'postgres' }] });
+      return Response.json({ id: 8, name: 'My reporting connection', engine: 'postgres', details: { host: 'db', port: 5432, dbname: 'hubos' } });
+    };
+    const result = await bootstrapMetabase({ config, fetchImpl, updateAnalyticsConnection: true, logger: { log() {} } });
+    expect(result.databaseId).toBe(8);
+    expect(methods.filter((method) => method === 'POST')).toHaveLength(1); // Login only.
+  });
+
+  test('refuses to replace a missing tracked datasource', async () => {
+    const fetchImpl = async (url) => Response.json(url.endsWith('/api/session/properties') ? { 'setup-token': null }
+      : url.endsWith('/api/session') ? { id: 'fixture-session' } : { data: [] });
+    await expect(bootstrapMetabase({ config, fetchImpl, existingDatabaseId: 8, logger: { log() {} } })).rejects.toThrow('automatic replacement refused');
+  });
 });

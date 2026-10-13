@@ -4,6 +4,7 @@ import { randomId } from "../ids.js";
 import { StoreError } from "./errors.js";
 import { safeError, sanitizeAttributes } from '../privacy.js';
 import * as monitoring from './monitoring-postgres.js';
+import { currentSource, currentStatus } from './freshness.js';
 
 function jsonValue(value) {
   return JSON.stringify(value ?? {});
@@ -66,16 +67,17 @@ export class PostgresStore {
       SELECT domain, status, reason, observed_at, rule_version
       FROM status_snapshots WHERE site_id = ${siteId} ORDER BY domain
     `;
-    return { site: sites[0], statuses };
+    return { site: sites[0], statuses: statuses.map((status) => currentStatus(status)) };
   }
 
   async listSourceConnections() {
-    return this.db`
+    const rows = await this.db`
       SELECT id, organisation_id, name, connector_type, collection_mode,
              status, base_url, plugin_id, enabled, is_demo, poll_interval_seconds,
              freshness_seconds, last_success_at, created_at, updated_at
       FROM source_connections ORDER BY name
     `;
+    return rows.map((source) => currentSource(source));
   }
 
   async listIncidents({ status = null, countryCode = null } = {}) {
@@ -115,7 +117,7 @@ export class PostgresStore {
       WHERE i.status NOT IN ('resolved', 'closed')
       ORDER BY i.started_at DESC
     `;
-    const statusesBySite = Map.groupBy(statuses, (status) => String(status.site_id));
+    const statusesBySite = Map.groupBy(statuses.map((status) => currentStatus(status)), (status) => String(status.site_id));
     return {
       sites: sites.map((site) => ({ ...site, statuses: statusesBySite.get(String(site.id)) ?? [] })),
       incidents: incidents.map(hydrateIncident),
@@ -191,7 +193,7 @@ export class PostgresStore {
             unit, quality, observed_at, attributes
           ) VALUES (
             ${siteId}, ${item.source_connection_id}, ${item.external_record_id}, ${item.metric},
-            ${item.value}, ${item.unit}, ${item.quality}, ${item.observed_at}, ${jsonValue(sanitizeAttributes(item.attributes))}::jsonb
+            ${item.value}, ${item.unit}, ${item.quality}, ${item.observed_at}, ${jsonValue(sanitizeAttributes(item.attributes))}::text::jsonb
           )
           ON CONFLICT (source_connection_id, external_record_id, metric) DO NOTHING
           RETURNING id
@@ -279,7 +281,7 @@ export class PostgresStore {
       INSERT INTO raw_payloads (
         source_connection_id, connector_run_id, external_record_id, observed_at, payload
       ) VALUES (
-        ${sourceConnectionId}, ${connectorRunId}, ${externalRecordId}, ${observedAt}, ${jsonValue(payload)}::jsonb
+        ${sourceConnectionId}, ${connectorRunId}, ${externalRecordId}, ${observedAt}, ${jsonValue(payload)}::text::jsonb
       ) ON CONFLICT (source_connection_id, external_record_id) DO NOTHING
     `;
   }
@@ -322,7 +324,7 @@ export class PostgresStore {
 
   async finishConnectorRun(runId, summary) {
     await this.db`
-      UPDATE connector_runs SET status = 'succeeded', finished_at = now(), summary = ${jsonValue(summary)}::jsonb
+      UPDATE connector_runs SET status = 'succeeded', finished_at = now(), summary = ${jsonValue(summary)}::text::jsonb
       WHERE id = ${runId} AND status = 'running'
     `;
   }
@@ -383,7 +385,7 @@ export class PostgresStore {
           ) VALUES (
             ${source.id}, ${source.organisation_id}, ${source.name}, ${source.connector_type},
             ${source.plugin_id ?? source.connector_type}, ${source.collection_mode}, ${source.status},
-            ${source.enabled ?? false}, ${source.is_demo ?? false}, ${jsonValue(source.config)}::jsonb,
+            ${source.enabled ?? false}, ${source.is_demo ?? false}, ${jsonValue(source.config)}::text::jsonb,
             ${source.poll_interval_seconds ?? 60}, ${source.freshness_seconds ?? 300}, ${source.last_success_at}
           )
           ON CONFLICT (id) DO UPDATE SET
@@ -430,7 +432,7 @@ export class PostgresStore {
             ${observation.site_id}, ${observation.source_connection_id},
             ${observation.external_record_id}, ${observation.metric}, ${observation.value},
             ${observation.unit}, ${observation.quality}, ${observation.observed_at},
-            ${jsonValue(observation.attributes)}::jsonb
+            ${jsonValue(observation.attributes)}::text::jsonb
           ) ON CONFLICT (source_connection_id, external_record_id, metric) DO NOTHING
         `;
       }
@@ -454,7 +456,7 @@ export class PostgresStore {
             id, site_id, title, severity, status, owner, started_at, details
           ) VALUES (
             ${incident.id}, ${incident.site_id}, ${incident.title}, ${incident.severity},
-            ${incident.status}, ${incident.owner}, ${incident.started_at}, ${jsonValue(incident.details)}::jsonb
+            ${incident.status}, ${incident.owner}, ${incident.started_at}, ${jsonValue(incident.details)}::text::jsonb
           ) ON CONFLICT (id) DO NOTHING
         `;
       }
@@ -464,7 +466,7 @@ export class PostgresStore {
             id, connector_id, job_type, payload, status, next_run_at,
             schedule_interval_seconds, max_attempts
           ) VALUES (
-            ${job.id}, ${job.connector_id}, ${job.job_type}, ${jsonValue(job.payload)}::jsonb,
+            ${job.id}, ${job.connector_id}, ${job.job_type}, ${jsonValue(job.payload)}::text::jsonb,
             ${job.status}, ${job.next_run_at}, ${job.schedule_interval_seconds}, ${job.max_attempts}
           ) ON CONFLICT (id) DO NOTHING
         `;

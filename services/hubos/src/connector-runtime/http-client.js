@@ -30,6 +30,7 @@ export function createHttpClient({ fetchImpl = fetch, timeoutMs = 15000, maximum
         }
         throw new CollectionError('SOURCE_HTTP_ERROR');
       }
+      if ([204, 205].includes(response.status)) return null;
       const reader = response.body?.getReader();
       if (!reader) throw new CollectionError('SOURCE_MALFORMED_RESPONSE');
       let size = 0;

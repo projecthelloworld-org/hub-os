@@ -69,7 +69,7 @@ export async function applySignal(db, sourceId, incoming) {
         status, started_at, last_signal_at, details)
         VALUES (${incidentId}, ${subject.site_id ?? null}, ${subject.monitor_id ?? null}, ${sourceId}, ${signal.rule_id},
           ${title}, ${rule.severity}, 'open', ${signal.observed_at}, ${signal.observed_at},
-          ${JSON.stringify({ synthetic: subject.is_demo, scope: subject.scope })}::jsonb)`;
+          ${JSON.stringify({ synthetic: subject.is_demo, scope: subject.scope })}::text::jsonb)`;
     } else if (transition === 'updated') {
       await tx`UPDATE incidents SET last_signal_at = ${signal.observed_at}, signal_count = signal_count + 1 WHERE id = ${incidentId}`;
     } else if (transition === 'recovered') {

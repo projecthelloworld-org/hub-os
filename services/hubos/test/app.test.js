@@ -56,6 +56,16 @@ describe("read API", () => {
     expect(payload.statuses.map((status) => status.domain)).toEqual(["connectivity", "devices", "power"]);
   });
 
+  test('stale API/console evidence is unknown and never clears an existing incident', async () => {
+    for (const status of store.state.statuses) status.observed_at = new Date(Date.now() - 3600000).toISOString();
+    const overview = await (await request('/api/v1/overview')).json();
+    expect(overview.sites.every((site) => site.statuses.every((status) => status.status === 'unknown'))).toBe(true);
+    const statuses = await (await request(`/api/v1/sites/${overview.sites[0].id}/status`)).json();
+    expect(statuses.statuses.every((status) => status.status === 'unknown')).toBe(true);
+    expect(overview.incidents).toHaveLength(1);
+    expect(store.state.statuses.some((status) => status.status === 'healthy')).toBe(true);
+  });
+
   test("exposes connector and source inventories", async () => {
     const sources = await (await request("/api/v1/source-connections")).json();
     const connectors = await (await request("/api/v1/connectors")).json();

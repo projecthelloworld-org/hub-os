@@ -14,6 +14,7 @@ describe('Metabase dashboard and alert contract', () => {
     expect(dashboards.map((dashboard) => dashboard.name)).toEqual(['Community Operations', 'Availability & Connectivity', 'Devices & Field Evidence', 'Collection & Support']);
     expect(new Set(questions.map((question) => question.key)).size).toBe(questions.length);
     expect(dashboardParameters().map((parameter) => parameter.slug)).toEqual(['site', 'country', 'date']);
+    expect(dashboardParameters().find((parameter) => parameter.slug === 'date').default).toBe('past30days~');
     for (const definition of questions) {
       const card = buildQuestion(definition, { databaseId: 2, collectionId: 3, fieldId: () => 42 });
       expect(card.dataset_query.native.query).toContain('FROM analytics.');

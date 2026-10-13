@@ -2,6 +2,7 @@ import { randomId } from "../ids.js";
 import { StoreError } from "./errors.js";
 import { safeError, sanitizeAttributes } from '../privacy.js';
 import { rules, validateSignal, decideSignalTransition } from '../alerts/signals.js';
+import { currentSource, currentStatus } from './freshness.js';
 
 function clone(value) {
   return structuredClone(value);
@@ -36,12 +37,12 @@ export class MemoryStore {
     const statuses = this.state.statuses
       .filter((item) => item.site_id === siteId)
       .sort((a, b) => a.domain.localeCompare(b.domain));
-    return clone({ site, statuses });
+    return clone({ site, statuses: statuses.map((status) => currentStatus(status)) });
   }
 
   async listSourceConnections() {
     return clone([...this.state.sourceConnections].sort((a, b) => a.name.localeCompare(b.name))
-      .map(({ config, key, ...source }) => source));
+      .map(({ config, key, ...source }) => currentSource(source)));
   }
 
   async listIncidents({ status = null, countryCode = null } = {}) {
@@ -60,7 +61,7 @@ export class MemoryStore {
       ...site,
       statuses: this.state.statuses
         .filter((status) => status.site_id === site.id)
-        .sort((a, b) => a.domain.localeCompare(b.domain)),
+        .sort((a, b) => a.domain.localeCompare(b.domain)).map((status) => currentStatus(status)),
     }));
     const incidents = await this.listIncidents();
     const siteById = new Map(sites.map((site) => [site.id, site]));

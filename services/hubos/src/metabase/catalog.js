@@ -14,7 +14,7 @@ export const questions = [
     { display: 'bar', dimensions: ['country_code', 'connectivity'], metrics: ['sites'],
       description: 'Counts of sites by current connectivity evidence; unknown is not healthy. This is not an impact or beneficiary measure.' }),
   question('operations-incidents', 'Open support queue — opened in selected period', 'incident_history',
-    'id AS incident_id, site_code, title, severity, status, owner, started_at, scope, synthetic',
+    'site_code, status, severity, title, owner, started_at, scope, synthetic, id AS incident_id',
     'AND status IN (\'open\', \'acknowledged\') ORDER BY started_at DESC',
     { dateField: 'started_at', description: 'Existing support issues, scoped by their opening date. Infrastructure checks have no community site.' }),
   question('availability-community', 'Community targets — observed uptime and coverage', 'monitor_daily',
@@ -51,19 +51,19 @@ export const questions = [
     'ORDER BY site_code, source_name',
     { description: 'Approved numeric ODK operational fields only. These are field reports, not automatic probes or learning outcomes. Stale/missing values are unavailable.' }),
   question('collection-status', 'Collection freshness and source coverage', 'collection_status',
-    'site_code, source_name, plugin_id, enabled, freshness, last_success_at, freshness_seconds, synthetic',
+    'site_code, freshness, source_name, plugin_id, enabled, last_success_at, freshness_seconds, synthetic',
     'ORDER BY freshness, site_code, source_name',
     { dateField: 'last_success_at', description: 'Current collector freshness, not network health. Disabled and never-collected sources are explicit; multiple mappings do not multiply source/site rows.' }),
   question('support-history', 'Incident history', 'incident_history',
-    'id AS incident_id, site_code, title, severity, status, owner, started_at, resolved_at, signal_count, scope, synthetic',
+    'site_code, status, severity, title, owner, started_at, resolved_at, signal_count, scope, synthetic, id AS incident_id',
     'ORDER BY started_at DESC LIMIT 1000',
     { dateField: 'started_at', description: 'Incident opening/recovery history and ownership. Repeated signals update an incident rather than create repeated openings.' }),
   question('support-delivery', 'Notification delivery queue', 'notification_delivery',
-    'incident_id, site_code, title, event_kind, status, attempts, created_at, delivered_at, scope, synthetic',
+    'site_code, event_kind, status, attempts, title, created_at, delivered_at, scope, synthetic, incident_id',
     'ORDER BY created_at DESC LIMIT 1000',
     { dateField: 'created_at', description: 'Actual outbox delivery/retry states; disabled notification delivery is not reported as successful.' }),
   question('plugin-telemetry', 'Additional plugin telemetry', 'telemetry',
-    'site_code, source_name, plugin_id, metric, value, unit, quality, observed_at, synthetic',
+    'site_code, metric, value, unit, quality, source_name, plugin_id, observed_at, synthetic',
     'ORDER BY observed_at DESC, site_code, metric LIMIT 1000',
     { description: 'Generic canonical measurements from all enabled plugin types. Quality and synthetic classification remain visible; no vendor-specific reporting schema is required.' }),
 ];
@@ -88,11 +88,27 @@ export function dashboardParameters() {
   return [
     { id: 'hubos-site', name: 'Community site', slug: 'site', type: 'string/=' },
     { id: 'hubos-country', name: 'Country', slug: 'country', type: 'string/=' },
-    { id: 'hubos-date', name: 'Evidence date (UTC)', slug: 'date', type: 'date/all-options', default: 'past30days' },
+    // Metabase excludes today without the trailing '~' (include current period).
+    { id: 'hubos-date', name: 'Evidence date (UTC)', slug: 'date', type: 'date/all-options', default: 'past30days~' },
   ];
 }
 
 export function buildQuestion(definition, { databaseId, collectionId, fieldId }) {
+  const titles = {
+    site_code: 'Site', site_name: 'Community site', country_code: 'Country', site_type: 'Site type',
+    active_incidents: 'Open incidents', observed_at: 'Observed (UTC)', synthetic: 'Demonstration',
+    connectivity: 'Connectivity', power: 'Power', devices: 'Devices', source_name: 'Source', plugin_id: 'Plugin',
+    monitor_name: 'Target', scope: 'Scope', status: 'Status', response_ms: 'Response (ms)',
+    observed_uptime_percent: 'Observed uptime (%)', coverage_percent: 'Observation coverage (%)',
+    observed_seconds: 'Known seconds', eligible_seconds: 'Eligible seconds', day: 'UTC day',
+    inventory_count: 'Inventory', recent_check_ins: 'Recent check-ins', stale_check_ins: 'Stale check-ins', unknown_check_ins: 'Unknown check-ins',
+    fault_count: 'Reported faults', usable_devices: 'Usable devices', reported_connectivity: 'Reported connectivity', reported_power: 'Reported power',
+    enabled: 'Enabled', freshness: 'Freshness', last_success_at: 'Last collection (UTC)', freshness_seconds: 'Freshness limit (s)',
+    title: 'Issue', severity: 'Severity', owner: 'Owner', started_at: 'Opened (UTC)', resolved_at: 'Recovered (UTC)', signal_count: 'Signals',
+    incident_id: 'Incident identifier', event_kind: 'Event', attempts: 'Retries', created_at: 'Queued (UTC)', delivered_at: 'Delivered (UTC)',
+    metric: 'Measurement', value: 'Value', unit: 'Unit', quality: 'Quality', series: 'Site / source', sites: 'Sites',
+  };
+  const columnSettings = Object.fromEntries(Object.entries(titles).map(([name, title]) => [JSON.stringify(['name', name]), { column_title: title }]));
   const tags = {};
   const fields = definition.siteFilters === false ? [['date', definition.dateField, 'date/all-options']]
     : [['site', 'site_code', 'string/='], ['country', 'country_code', 'string/='], ['date', definition.dateField, 'date/all-options']];
@@ -105,10 +121,12 @@ export function buildQuestion(definition, { databaseId, collectionId, fieldId })
   return { name: definition.name, description: definition.description, collection_id: collectionId, display: definition.display,
     dataset_query: { database: databaseId, type: 'native', native: { query:
       `SELECT ${definition.select}\nFROM analytics.${definition.view}\nWHERE 1=1\n${filters}\n${definition.tail}`, 'template-tags': tags } },
-    visualization_settings: definition.display === 'table' ? {} : {
+    visualization_settings: definition.display === 'table' ? { column_settings: columnSettings } : {
+      column_settings: columnSettings,
       'graph.dimensions': definition.dimensions, 'graph.metrics': definition.metrics,
       'graph.colors': ['#e76031', '#247a89', '#636464', '#8f4f9f'], 'graph.show_values': false,
       'graph.y_axis.auto_range': !definition.metrics?.includes('observed_uptime_percent'),
+      'graph.y_axis.auto_split': false,
       ...(definition.metrics?.includes('observed_uptime_percent') ? { 'graph.y_axis.min': 0, 'graph.y_axis.max': 100 } : {}),
       'graph.missing': 'none',
     },

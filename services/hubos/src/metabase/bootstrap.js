@@ -127,14 +127,25 @@ export async function bootstrapMetabase({
   }
   const databaseBody = await databasesResponse.json();
   const databases = Array.isArray(databaseBody) ? databaseBody : databaseBody?.data ?? [];
-  const matches = databases.filter((database) => database.id === existingDatabaseId || (!existingDatabaseId && database.name === config.databaseName));
-  if (matches.length > 1) throw new Error('Ambiguous Metabase reporting database');
   const client = createMetabaseClient({ url: config.url, sessionId, fetchImpl });
+  const matches = databases.filter((database) => database.id === existingDatabaseId || (!existingDatabaseId && database.name === config.databaseName));
+  if (existingDatabaseId && matches.length === 0) throw new Error('Tracked Metabase reporting database is missing; automatic replacement refused');
+  if (!existingDatabaseId && matches.length === 0 && updateAnalyticsConnection) {
+    // A v0.1 administrator may have renamed the connection before resource tracking existed.
+    // Adopt only a unique exact PostgreSQL target; never choose a database by inventory order.
+    for (const database of databases.filter((database) => database.engine === 'postgres')) {
+      const current = await client(`/api/database/${database.id}`);
+      if (current.details.host === config.databaseHost && current.details.dbname === config.database
+        && Number(current.details.port ?? 5432) === config.databasePort) matches.push(current);
+    }
+  }
+  if (matches.length > 1) throw new Error('Ambiguous Metabase reporting database');
   if (matches.length === 1) {
     const databaseId = matches[0].id;
     if (updateAnalyticsConnection) {
       const current = await client(`/api/database/${databaseId}`);
-      if (current.engine !== 'postgres' || current.details.host !== config.databaseHost || current.details.dbname !== config.database) {
+      if (current.engine !== 'postgres' || current.details.host !== config.databaseHost || current.details.dbname !== config.database
+        || Number(current.details.port ?? 5432) !== config.databasePort) {
         throw new Error('Metabase reporting database target changed; review configuration before provisioning');
       }
       await client(`/api/database/${databaseId}`, { method: 'PUT', body: { details: {
@@ -143,7 +154,8 @@ export async function bootstrapMetabase({
       } } });
     }
     if (onAuthenticated) await onAuthenticated({ client, databaseId });
-    logger.log(`Metabase already contains ${config.databaseName}; bootstrap made no changes`);
+    logger.log(updateAnalyticsConnection ? 'Retained the Metabase reporting connection and enforced view-only access'
+      : `Metabase already contains ${config.databaseName}; bootstrap made no changes`);
     return { status: initializedNow ? "configured" : "already-configured", databaseId };
   }
 

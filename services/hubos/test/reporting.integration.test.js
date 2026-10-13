@@ -51,6 +51,7 @@ suite('Reporting views and enforced read-only access', () => {
 
   test('reporting can read views but cannot read raw credentials, write tables or create objects', async () => {
     expect((await reporting`SELECT * FROM analytics.community_operations`)).toHaveLength(1);
+    expect((await reporting.unsafe('SHOW timezone'))[0].TimeZone).toBe('UTC');
     await expect((async () => { await reporting`SELECT config FROM source_connections`; })()).rejects.toThrow('permission denied');
     await reporting`SET default_transaction_read_only = off`;
     await expect((async () => { await reporting`UPDATE sites SET name = 'changed' WHERE id = ${siteId}`; })()).rejects.toThrow('permission denied');
@@ -59,6 +60,10 @@ suite('Reporting views and enforced read-only access', () => {
     expect(json).not.toContain('PRIVATE_PASSWORD');
     expect(json).not.toContain('fixture-readonly-password');
     await expect(ensureAnalyticsAccount(store.db, { username: 'hubos_test', ownerUsername: 'hubos_test', password: 'fixture-password-long' })).rejects.toThrow('INVALID_ANALYTICS_ACCOUNT');
+    // An existing role must not retain schema ownership through a misleading read-only setting.
+    await store.db.unsafe(`CREATE SCHEMA analytics_fixture_owned AUTHORIZATION ${roleName}`);
+    await expect(ensureAnalyticsAccount(store.db, { username: roleName, ownerUsername: 'hubos_test', password: 'fixture-password-long' })).rejects.toThrow('ANALYTICS_ROLE_HAS_EXCESS_PRIVILEGES');
+    await store.db.unsafe('DROP SCHEMA analytics_fixture_owned');
   });
 
   test('a healthy controller cannot clear another fault or a disabled/stale source', async () => {
@@ -89,5 +94,14 @@ suite('Reporting views and enforced read-only access', () => {
     expect(field.state).toBe('unknown');
     const metrics = await reporting`SELECT value FROM analytics.metric_current WHERE metric = 'field.report.fault.count'`;
     expect(metrics[0].value).toBeNull();
+  });
+
+  test('future collection timestamps do not establish healthy source or recovery evidence', async () => {
+    await store.db`UPDATE source_connections SET last_success_at = now() + interval '1 hour', status = 'healthy' WHERE id = ${secondSource}`;
+    expect((await reporting`SELECT freshness FROM analytics.collection_status WHERE source_connection_id = ${secondSource}`)[0].freshness).toBe('unknown');
+    expect((await reporting`SELECT status FROM analytics.connector_health WHERE source_connection_id = ${secondSource}`)[0].status).toBe('unknown');
+    expect((await reporting`SELECT state FROM analytics.operational_rule_conditions
+      WHERE source_connection_id = ${secondSource} AND rule_id = 'collection-freshness'`)[0].state).toBe('unknown');
+    expect((await store.listSourceConnections()).find((source) => String(source.id) === secondSource).status).toBe('unknown');
   });
 });

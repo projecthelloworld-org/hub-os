@@ -73,7 +73,7 @@ export async function provisionMetabaseMonitoring({ store, env = process.env, fe
   const sourceId = stableId('source', core.demoMode ? 'demo-owned-metabase' : 'owned-metabase');
   await store.db`INSERT INTO source_connections (id, organisation_id, name, connector_type, plugin_id, collection_mode,
     config, enabled, is_demo) VALUES (${sourceId}, ${orgId}, 'HubOS-owned Metabase alert evaluator', 'metabase', 'metabase-alerts', 'webhook',
-      ${JSON.stringify({ mapping_policy: 'canonical_site_ids', question_rules: {}, credential_refs: { webhookKey: 'env:METABASE_WEBHOOK_KEY' } })}::jsonb, true, ${core.demoMode})
+      ${JSON.stringify({ mapping_policy: 'canonical_site_ids', question_rules: {}, credential_refs: { webhookKey: 'env:METABASE_WEBHOOK_KEY' } })}::text::jsonb, true, ${core.demoMode})
     ON CONFLICT (id) DO NOTHING`;
   await store.getSourceContext(sourceId); // Materialize the explicitly enabled canonical mapping policy.
   const stored = await registry.get('database', 'hubos');
@@ -131,7 +131,7 @@ export async function provisionMetabaseMonitoring({ store, env = process.env, fe
           ruleCards.push({ key, cardId: card.id });
         }
       }
-      await store.db`UPDATE source_connections SET config = jsonb_set(config, '{question_rules}', ${JSON.stringify(ruleMap)}::jsonb)
+      await store.db`UPDATE source_connections SET config = jsonb_set(config, '{question_rules}', ${JSON.stringify(ruleMap)}::text::jsonb)
         WHERE id = ${sourceId}`;
       const channel = await managed(client, registry, 'channel', 'incident-routing', '/api/channel', buildMetabaseChannel({ sourceId,
         webhookKey, internalUrl: env.HUBOS_INTERNAL_URL ?? 'http://api:3000' }));

@@ -43,7 +43,7 @@ export async function provisionKuma({ store, env = process.env, sessionFactory =
       ${JSON.stringify({ adapter_version: '2.5.6', owned_instance: true, credential_refs: {
         username: 'env:KUMA_ADMIN_USER', password: 'env:KUMA_ADMIN_PASSWORD', webhookKey: 'env:KUMA_WEBHOOK_KEY',
         metricsKey: `file:${keyPath}`,
-      } })}::jsonb, true, ${config.demoMode}) ON CONFLICT (id) DO NOTHING`;
+      } })}::text::jsonb, true, ${config.demoMode}) ON CONFLICT (id) DO NOTHING`;
   const target = await store.getSourceContext(sourceId);
   const sites = (await store.listSites()).filter((site) => String(site.organisation_id) === orgId);
   const requested = definitions ?? starterMonitorDefinitions(sites, config.demoMode);

@@ -175,6 +175,10 @@ describe('trusted source-driven plugin runtime', () => {
 });
 
 describe('bounded, redacted upstream client', () => {
+  test('accepts successful no-content responses without inventing JSON', async () => {
+    const client = createHttpClient({ fetchImpl: async () => new Response(null, { status: 204 }) });
+    expect(await client('https://fixture.invalid/api', { method: 'DELETE' })).toBeNull();
+  });
   test('classifies authentication, rate limits and malformed responses without echoing bodies', async () => {
     for (const [response, code] of [[new Response('secret', { status: 401 }), 'SOURCE_AUTHENTICATION_FAILED'],
       [new Response('secret', { status: 429, headers: { 'retry-after': '120' } }), 'SOURCE_RATE_LIMITED'],

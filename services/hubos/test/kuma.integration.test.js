@@ -16,9 +16,9 @@ const kumaUrl = process.env.HUBOS_TEST_KUMA_URL;
 const databaseUrl = process.env.HUBOS_TEST_DATABASE_URL;
 const suite = kumaUrl && databaseUrl ? describe : describe.skip;
 
-async function waitFor(check, maximumMs = 60000) {
-  const end = Date.now() + maximumMs;
-  while (Date.now() < end) {
+async function waitFor(check, maximumMs = 90000) {
+  const end = performance.now() + maximumMs;
+  while (performance.now() < end) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -27,6 +27,7 @@ async function waitFor(check, maximumMs = 60000) {
 
 suite('Uptime Kuma 2.5.6 actual adapter and Mailpit', () => {
   let store, server, env, first, monitor, credentials, admin, fixtureDatabase;
+  const rejectedCallbacks = [];
   const definitions = [
     { key: 'controlled-fixture', name: 'HubOS controlled fixture (infrastructure)', url: 'http://probe:3900/controlled', scope: 'infrastructure', interval_seconds: 20 },
     { key: 'up-fixture', name: 'HubOS up fixture (infrastructure)', url: 'http://probe:3900/up', scope: 'infrastructure', interval_seconds: 20 },
@@ -47,8 +48,12 @@ suite('Uptime Kuma 2.5.6 actual adapter and Mailpit', () => {
       await store.db.unsafe(migration.split('-- migrate:down')[0]);
     }
     await fetch('http://127.0.0.1:13003/__test/state', { method: 'POST', headers: { 'content-type': 'application/json', 'x-fixture-key': 'fixture-only' }, body: JSON.stringify({ status: 200 }) });
-    server = Bun.serve({ hostname: process.env.HUBOS_TEST_CALLBACK_BIND ?? '127.0.0.1', port: 13004, fetch: createApp({ store, config: loadConfig(),
-      resolveSecrets: async () => ({ webhookKey: 'fixture-only-kuma-webhook' }) }) });
+    const app = createApp({ store, config: loadConfig(), resolveSecrets: async () => ({ webhookKey: 'fixture-only-kuma-webhook' }) });
+    server = Bun.serve({ hostname: process.env.HUBOS_TEST_CALLBACK_BIND ?? '127.0.0.1', port: 13004, async fetch(request) {
+      const response = await app(request);
+      if (response.status >= 400) rejectedCallbacks.push({ status: response.status, error: (await response.clone().json()).error });
+      return response;
+    } });
     env = {
       HUBOS_DATABASE_URL: fixtureUrl.href, HUBOS_DEMO_MODE: 'false', KUMA_OWNED_INSTANCE: 'true', KUMA_URL: kumaUrl,
       KUMA_ADMIN_USER: 'hubos-test-admin', KUMA_ADMIN_PASSWORD: 'Fixture-Kuma-Password-2026!',
@@ -81,6 +86,10 @@ suite('Uptime Kuma 2.5.6 actual adapter and Mailpit', () => {
     return normalized;
   }
 
+  function requireAcceptedCallbacks() {
+    if (rejectedCallbacks.length) throw new Error(`Fixture callback rejected: ${JSON.stringify(rejectedCallbacks)}`);
+  }
+
   test('fresh/repeat setup creates one account, one routing provider, one key and two monitors without resetting edits', async () => {
     expect(first.monitors).toBe(2);
     expect(first.administrator_created).toBe(true);
@@ -108,7 +117,7 @@ suite('Uptime Kuma 2.5.6 actual adapter and Mailpit', () => {
     const initial = await collect();
     expect(initial.monitorSamples.every((sample) => sample.status === 1)).toBe(true);
     await fetch('http://127.0.0.1:13003/__test/state', { method: 'POST', headers: { 'content-type': 'application/json', 'x-fixture-key': 'fixture-only' }, body: JSON.stringify({ status: 503 }) });
-    await waitFor(async () => (await store.db`SELECT id FROM incidents WHERE monitor_id = ${monitor.id} AND status = 'open'`).length === 1);
+    await waitFor(async () => { requireAcceptedCallbacks(); return (await store.db`SELECT id FROM incidents WHERE monitor_id = ${monitor.id} AND status = 'open'`).length === 1; });
     await collect();
     const [incident] = await store.db`SELECT * FROM incidents WHERE monitor_id = ${monitor.id} AND status = 'open'`;
     expect((await store.db`SELECT * FROM notification_outbox WHERE incident_id = ${incident.id} AND event_kind = 'opened'`)).toHaveLength(1);
@@ -118,9 +127,9 @@ suite('Uptime Kuma 2.5.6 actual adapter and Mailpit', () => {
     await persistConnectorResult({ store, target, connector: kuma, normalized: repeated });
     expect((await store.db`SELECT * FROM incidents WHERE monitor_id = ${monitor.id}`)).toHaveLength(1);
     await fetch('http://127.0.0.1:13003/__test/state', { method: 'POST', headers: { 'content-type': 'application/json', 'x-fixture-key': 'fixture-only' }, body: JSON.stringify({ status: 200 }) });
-    await waitFor(async () => (await store.db`SELECT id FROM incidents WHERE id = ${incident.id} AND status = 'resolved'`).length === 1);
+    await waitFor(async () => { requireAcceptedCallbacks(); return (await store.db`SELECT id FROM incidents WHERE id = ${incident.id} AND status = 'resolved'`).length === 1; });
     expect((await store.db`SELECT * FROM notification_outbox WHERE incident_id = ${incident.id} AND event_kind = 'recovered'`)).toHaveLength(1);
-  }, 120000);
+  }, 240000);
 
   test('paused monitors become unknown rather than healthy and alert mail reaches Mailpit', async () => {
     await withKumaSession({ url: kumaUrl, username: credentials.username, password: credentials.password }, async (session) => {
