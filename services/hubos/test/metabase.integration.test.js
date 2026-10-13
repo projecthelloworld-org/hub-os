@@ -25,7 +25,7 @@ const waitFor = async (check, timeout = 45000) => {
 };
 
 suite('Native Metabase dashboards, filters and alert routing (disposable fixture)', () => {
-  let admin, store, server, env, client, first, roleName, databaseName, originalAccountId;
+  let admin, store, server, env, client, first, roleName, databaseName, originalAccountId, sessionId;
   const webhookKey = 'fixture-only-metabase-webhook';
   const callbacks = [];
   beforeAll(async () => {
@@ -88,7 +88,8 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     first = await provisionMetabaseMonitoring({ store, env, logger: { log() {} } });
     const session = await (await fetch(`${metabaseUrl}/api/session`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ username: env.METABASE_ADMIN_EMAIL, password: env.METABASE_ADMIN_PASSWORD }) })).json();
-    client = createMetabaseClient({ url: metabaseUrl, sessionId: session.id });
+    sessionId = session.id;
+    client = createMetabaseClient({ url: metabaseUrl, sessionId });
   }, 300000);
 
   afterAll(async () => {
@@ -161,6 +162,18 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     expect(stale.data.rows).toHaveLength(1);
     expect(stale.data.rows[0].slice(4, 7)).toEqual(['unknown', 'unknown', 'unknown']);
   }, 180000);
+
+  test('private authenticated channel works while loopback and link-local targets stay blocked', async () => {
+    const channel = await client(`/api/channel/${await resource('channel', 'incident-routing')}`);
+    expect(await client('/api/channel/test', { method: 'POST', body: { type: 'channel/http', details: channel.details } })).toEqual({ ok: true });
+    for (const blocked of ['http://127.0.0.1:13024/', 'http://169.254.254.254/']) {
+      const response = await fetch(`${metabaseUrl}/api/channel/test`, { method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-metabase-session': sessionId },
+        body: JSON.stringify({ type: 'channel/http', details: { url: blocked, method: 'post', 'auth-method': 'none' } }) });
+      expect(response.status).toBe(400);
+      expect((await response.json()).message).toContain('internal hosting metadata');
+    }
+  }, 30000);
 
   test('native fault/recovery notifications route through authenticated webhooks and deliver one opening/recovery email', async () => {
     const site = (await store.listSites('UG'))[0];

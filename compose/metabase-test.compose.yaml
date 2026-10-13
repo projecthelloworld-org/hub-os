@@ -23,6 +23,7 @@ services:
       MB_DB_PASS: fixture-only-not-for-deployment
       MB_ANON_TRACKING_ENABLED: "false"
       MB_REPORT_TIMEZONE: UTC
+      MB_HTTP_CHANNEL_HOST_STRATEGY: allow-private
       JAVA_TOOL_OPTIONS: -Xmx768m
     ports:
       - "127.0.0.1:13021:3000"

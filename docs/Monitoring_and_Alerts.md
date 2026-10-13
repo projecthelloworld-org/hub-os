@@ -7,6 +7,15 @@ reconstruct past state. Observation timestamps remain visible, and unknown is no
 healthy. Plugins may declare `evidence_max_age_seconds` independently of polling
 freshness; both report validity and successful collection must then be current.
 
+Metabase uses `MB_HTTP_CHANNEL_HOST_STRATEGY=allow-private` so its authenticated
+HTTP channel can reach HubOS on the private Compose backend. Its default
+`external-only` policy rejects that route. The selected upstream policy continues
+to reject loopback, link-local and known metadata hostnames; it does allow other
+private-network destinations, so channel administration is a trusted operator
+privilege. HubOS separately requires a distinct source webhook credential. See
+[the upstream setting](https://github.com/metabase/metabase/blob/v0.60.7/src/metabase/channel/settings.clj)
+and [host validation](https://github.com/metabase/metabase/blob/v0.60.7/src/metabase/util/http.clj).
+
 Implementation in progress for v0.2.0. Native Metabase setup, filter queries and fault/recovery delivery have been exercised locally alongside the Kuma/incident path. The complete installer, final rendered templates, supported upstream version review and backup flow remain release gates.
 
 ## Reachability is not community internet availability

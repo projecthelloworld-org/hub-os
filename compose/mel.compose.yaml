@@ -60,6 +60,9 @@ services:
       MB_ANON_TRACKING_ENABLED: "false"
       MB_ENABLE_EMBEDDING: "false"
       MB_REPORT_TIMEZONE: UTC
+      # HubOS receives authenticated webhooks on the private backend network.
+      # Metabase still rejects loopback/link-local/cloud metadata destinations.
+      MB_HTTP_CHANNEL_HOST_STRATEGY: allow-private
       MB_SITE_NAME: HubOS Monitoring and Evaluation
       MB_SITE_URL: ${METABASE_SITE_URL:-http://localhost:3001}
       MB_ENCRYPTION_SECRET_KEY: ${METABASE_ENCRYPTION_SECRET_KEY:-aHViT3MtbG9jYWwtb25seS1lbmNyeXB0aW9uLWtleQ==}
