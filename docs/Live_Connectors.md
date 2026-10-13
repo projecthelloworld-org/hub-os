@@ -2,8 +2,9 @@
 
 The `unifi`, `headwind` and `odk` modules use the same source-driven plugin lifecycle,
 canonical site mappings and numeric evidence store. No vendor-specific reporting
-tables or core routing changes are needed. They are currently fixture-tested;
-local Headwind/ODK integration and release verification remain pending.
+tables or core routing changes are needed. All three are fixture-tested. Headwind
+also passed a fresh local Community integration run; actual ODK integration and
+the remaining release verification gates are still pending.
 
 Each source has an explicit base URL, plugin ID, enabled flag, polling/freshness
 limits, configuration, and verified external-ID mappings. Credentials are references
@@ -50,6 +51,19 @@ inventory fail collection. Devices outside approved mappings are not persisted.
 Check-ins are server receipt timestamps, not human/app use. JWT login uses the
 upstream password-digest protocol over verified TLS; digests and tokens are secrets.
 No licensed analytics or management commands are used. See [the API notes](Headwind_Community_API_Notes.md).
+
+Local verification used Community 5.39.2 on PostgreSQL 16, image
+`headwindmdm/hmdm@sha256:d2f57af7622c5c82f1689b9520bfe3059ca29d0fd6c051cc3970c2b558cd63d6`.
+Both the downloaded and deployed WAR had SHA-256
+`1a20b2683b82e29f421aea30d9c20da5fd7b4713f6737616e7686080877a3cb4`.
+The actual application asset reported `APP_VERSION=5.39.2`. These record the
+tested artifact, not a vendor signature or universal deployment compatibility.
+Two integration tests covered fresh administrator setup, an empty-management-
+permission reader scoped to one fictional group/configuration, 51 devices across
+two inventory pages, lookup access, management rejection with absence verification,
+missing credentials, wrong credentials, numeric privacy projection, and actual
+server-timestamp recent/stale/never-check-in cases. Fixture setup writes are separate
+from the production collector.
 
 ## ODK Central
 

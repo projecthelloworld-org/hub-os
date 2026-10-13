@@ -68,6 +68,35 @@ jobs:
           docker compose -p hubos-ci-kuma-test -f compose/kuma-test.compose.yaml down --volumes
           docker compose -p hubos-ci-test -f compose/test.compose.yaml down --volumes
 
+  headwind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/hubos
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Start disposable Headwind Community fixture
+        working-directory: .
+        run: docker compose -p hubos-ci-headwind-test -f compose/headwind-test.compose.yaml up -d --wait
+      - name: Verify actual inventory, check-ins and minimum account
+        run: bun test test/headwind.integration.test.js
+        env:
+          HUBOS_TEST_HEADWIND_URL: http://127.0.0.1:13031/
+      - name: Record deployed Headwind artifact
+        working-directory: .
+        run: |
+          docker compose -p hubos-ci-headwind-test -f compose/headwind-test.compose.yaml exec -T hmdm sha256sum /usr/local/tomcat/work/cache/hmdm-5.39.2-os.war /usr/local/tomcat/webapps/ROOT.war
+          docker image inspect headwindmdm/hmdm:0.1.8 --format '{{json .RepoDigests}}'
+      - name: Clean disposable Headwind fixture
+        if: always()
+        working-directory: .
+        run: docker compose -p hubos-ci-headwind-test -f compose/headwind-test.compose.yaml down --volumes
+
   sbom:
     runs-on: ubuntu-latest
     permissions:

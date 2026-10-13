@@ -1,0 +1,48 @@
+# Disposable, fictional-only Community server. Never use public fixture secrets live.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hmdm_fixture
+      POSTGRES_USER: hmdm_fixture
+      POSTGRES_PASSWORD: fixture-only-not-for-deployment
+    volumes:
+      - headwind-fixture-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U hmdm_fixture -d hmdm_fixture]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  hmdm:
+    image: headwindmdm/hmdm:0.1.8
+    environment:
+      SQL_HOST: db
+      SQL_BASE: hmdm_fixture
+      SQL_USER: hmdm_fixture
+      SQL_PASS: fixture-only-not-for-deployment
+      BASE_DOMAIN: localhost
+      PROTOCOL: http
+      ADMIN_EMAIL: fixture-admin@example.invalid
+      SHARED_SECRET: fixture-only-headwind-secret
+      HMDM_VARIANT: os
+      HMDM_URL: https://h-mdm.com/files/hmdm-5.39.2-os.war
+      CLIENT_VERSION: "6.34"
+      JAVA_OPTS: -Xmx512m
+    ports:
+      - "127.0.0.1:13031:8080"
+    volumes:
+      - headwind-fixture-work:/usr/local/tomcat/work
+      - headwind-fixture-config:/usr/local/tomcat/conf/Catalina/localhost
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "wget --quiet -O /dev/null --header='Accept: application/json' http://127.0.0.1:8080/rest/public/auth/options"]
+      interval: 5s
+      timeout: 5s
+      retries: 100
+      start_period: 60s
+volumes:
+  headwind-fixture-db:
+  headwind-fixture-work:
+  headwind-fixture-config:
