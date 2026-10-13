@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { stableId } from '../src/ids.js';
+import { randomId, stableId } from '../src/ids.js';
 const url = process.env.HUBOS_TEST_ACCESS_URL;
 const suite = url ? describe : describe.skip;
 suite('Caddy operator and machine credential boundary (owned disposable fixture)', () => {
@@ -63,6 +63,23 @@ suite('Caddy operator and machine credential boundary (owned disposable fixture)
     const health = await call('/healthz', { headers });
     expect(health.headers.get('x-fixture-authorization-present')).toBe('false');
     expect(health.headers.get('x-fixture-admin-key-present')).toBe('false');
+  });
+  test('site administration uses operator login and cannot transfer an existing site identity', async () => {
+    const inventory = await (await call('/api/v1/sites', { headers: { authorization: auth } })).json();
+    const metadata = { organisation_id: inventory.sites[0].organisation_id, site_code: `ACCESS-${randomId()}`,
+      name: 'Access fixture library', country_code: 'UG', site_type: 'library' };
+    const body = JSON.stringify(metadata), json = { 'content-type': 'application/json' };
+    expect((await call('/api/v1/sites', { method: 'POST', headers: { ...json, 'x-hubos-admin-key': 'fixture-only-admin-key' }, body })).status).toBe(401);
+    const created = await call('/api/v1/sites', { method: 'POST', headers: { ...json, authorization: auth }, body });
+    expect(created.status).toBe(201);
+    const site = await created.json();
+    const path = `/api/v1/sites/${site.id}`;
+    expect((await call(path, { method: 'PATCH', headers: { ...json, authorization: auth, origin: 'https://foreign.example.invalid' },
+      body: JSON.stringify({ name: 'Rejected foreign change' }) })).status).toBe(403);
+    const edited = await call(path, { method: 'PATCH', headers: { ...json, authorization: auth }, body: JSON.stringify({ name: 'Shared community centre' }) });
+    expect(edited.status).toBe(200);
+    expect(await edited.json()).toMatchObject({ id: site.id, site_code: metadata.site_code, name: 'Shared community centre', is_demo: false });
+    expect((await call(path, { method: 'PATCH', headers: { ...json, authorization: auth }, body: JSON.stringify({ organisation_id: randomId() }) })).status).toBe(422);
   });
   test('machine ingestion and source hooks need their own keys, not operator credentials', async () => {
     const path = `/api/v1/source-connections/${stableId('source', 'access-fixture-kuma')}/webhook`;

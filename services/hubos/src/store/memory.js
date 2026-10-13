@@ -23,6 +23,27 @@ export class MemoryStore {
 
   async close() {}
 
+  async createSite(metadata) {
+    const organisations = this.state.organisations ?? [this.state.organisation];
+    if (!organisations.some((organisation) => organisation?.id === metadata.organisation_id)) {
+      throw new StoreError(422, 'Organisation not found');
+    }
+    if (this.state.sites.some((site) => site.organisation_id === metadata.organisation_id && site.site_code === metadata.site_code)) {
+      throw new StoreError(409, 'Site code already exists in this organisation');
+    }
+    const now = new Date().toISOString();
+    const site = { ...clone(metadata), id: randomId(), created_at: now, updated_at: now };
+    this.state.sites.push(site);
+    return clone(site);
+  }
+
+  async updateSite(siteId, changes) {
+    const site = this.state.sites.find((item) => item.id === siteId);
+    if (!site) throw new StoreError(404, 'Site not found');
+    Object.assign(site, clone(changes), { updated_at: new Date().toISOString() });
+    return clone(site);
+  }
+
   async listSites(countryCode = null) {
     return clone(
       this.state.sites

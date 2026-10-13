@@ -16,6 +16,16 @@ After successful authentication, Caddy removes the browser's Authorization heade
 
 Basic authentication has no general logout/session-management facility. On shared devices, use separate browser profiles and close sessions appropriately. Operator mutations reject foreign/opaque origins and cross-site requests, require JSON and enforce a 1 MiB body limit.
 
+### Community site administration
+
+The v0.2.0 source tree supports `POST /api/v1/sites` and `PATCH /api/v1/sites/{siteId}` through the authenticated operator entry point. These endpoints are not part of the published v0.1.0 API. The API description at `/api/v1/openapi.json` lists their request fields.
+
+Create a site with its existing organisation UUID, a non-personal site code, name and two-letter country code. Classification defaults to `other`; `school`, `community_centre` and `library` are examples, not an exhaustive list. Time zones and optional coordinates are validated. Live mode rejects synthetic sites.
+
+Edits can change the name, country, classification, time zone and coordinates. A coordinate can be cleared with JSON `null`. The canonical UUID, organisation, site code and synthetic/live classification are immutable through this endpoint, keeping existing observations and mappings attached to their original identity. Duplicate codes within one organisation are rejected. Creating a site does not create a controller mapping, a monitor or healthy evidence.
+
+All operators in this single-installation access model have the same administrative authority. Organisation identifiers group records; they do not provide partner isolation. Source and mapping administration must retain their separate validation and privacy boundaries.
+
 ## Machine access
 
 Only these explicit POST routes bypass operator login:

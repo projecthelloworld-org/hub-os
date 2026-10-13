@@ -11,6 +11,7 @@ import { safeError } from './privacy.js';
 import { resolveCredentials } from './connector-runtime/secrets.js';
 import { persistConnectorResult } from './connector-runtime/results.js';
 import { profileFor } from './demo/data.js';
+import { requireUuid, validateSite } from './administration/sites.js';
 
 const securityHeaders = {
   "x-content-type-options": "nosniff",
@@ -85,6 +86,18 @@ export function createApp({ store, config, resolveSecrets = resolveCredentials, 
       }
       if (request.method === "GET" && path === "/api/v1/sites") {
         return withSecurity(json({ sites: await store.listSites(url.searchParams.get("country")) }));
+      }
+      if (request.method === 'POST' && path === '/api/v1/sites') {
+        requireApiKey(request, config, 'admin');
+        const site = validateSite(await readJson(request), { demoMode: config.demoMode });
+        return withSecurity(json(await store.createSite(site), 201));
+      }
+      const siteEdit = path.match(/^\/api\/v1\/sites\/([^/]+)$/);
+      if (request.method === 'PATCH' && siteEdit) {
+        requireApiKey(request, config, 'admin');
+        const siteId = requireUuid(siteEdit[1], 'siteId');
+        const changes = validateSite(await readJson(request), { partial: true });
+        return withSecurity(json(await store.updateSite(siteId, changes)));
       }
       const siteStatus = path.match(/^\/api\/v1\/sites\/([^/]+)\/status$/);
       if (request.method === "GET" && siteStatus) {

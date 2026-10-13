@@ -38,6 +38,40 @@ export class PostgresStore {
     await this.db.close();
   }
 
+  async createSite(site) {
+    try {
+      const [created] = await this.db`
+        INSERT INTO sites (organisation_id, site_code, name, country_code, timezone, latitude, longitude, is_demo, site_type)
+        VALUES (${site.organisation_id}, ${site.site_code}, ${site.name}, ${site.country_code}, ${site.timezone},
+          ${site.latitude}, ${site.longitude}, ${site.is_demo}, ${site.site_type})
+        RETURNING id, organisation_id, site_code, name, country_code, timezone, latitude, longitude, is_demo, site_type, created_at, updated_at
+      `;
+      return created;
+    } catch (error) {
+      if (error.errno === '23503') throw new StoreError(422, 'Organisation not found');
+      if (error.errno === '23505') throw new StoreError(409, 'Site code already exists in this organisation');
+      throw error;
+    }
+  }
+
+  async updateSite(siteId, changes) {
+    // Explicit presence flags distinguish omitted fields from coordinate clears,
+    // without a read-modify-write that could lose concurrent unrelated changes.
+    const [updated] = await this.db`
+      UPDATE sites SET
+        name = CASE WHEN ${Object.hasOwn(changes, 'name')} THEN ${changes.name ?? null} ELSE name END,
+        country_code = CASE WHEN ${Object.hasOwn(changes, 'country_code')} THEN ${changes.country_code ?? null} ELSE country_code END,
+        timezone = CASE WHEN ${Object.hasOwn(changes, 'timezone')} THEN ${changes.timezone ?? null} ELSE timezone END,
+        latitude = CASE WHEN ${Object.hasOwn(changes, 'latitude')} THEN ${changes.latitude ?? null}::double precision ELSE latitude END,
+        longitude = CASE WHEN ${Object.hasOwn(changes, 'longitude')} THEN ${changes.longitude ?? null}::double precision ELSE longitude END,
+        site_type = CASE WHEN ${Object.hasOwn(changes, 'site_type')} THEN ${changes.site_type ?? null} ELSE site_type END
+      WHERE id = ${siteId}
+      RETURNING id, organisation_id, site_code, name, country_code, timezone, latitude, longitude, is_demo, site_type, created_at, updated_at
+    `;
+    if (!updated) throw new StoreError(404, 'Site not found');
+    return updated;
+  }
+
   async listSites(countryCode = null) {
     if (countryCode) {
       return this.db`
