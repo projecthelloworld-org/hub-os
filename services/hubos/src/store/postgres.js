@@ -38,6 +38,10 @@ export class PostgresStore {
     await this.db.close();
   }
 
+  async listOrganisations() {
+    return this.db`SELECT id, slug, name, created_at, updated_at FROM organisations ORDER BY slug`;
+  }
+
   async createSite(site) {
     try {
       const [created] = await this.db`

@@ -19,6 +19,9 @@ export function buildOpenApi(version = "0.1.0") {
       "/healthz": { get: { summary: "Process health", responses: { 200: { description: "Healthy" } } } },
       "/readyz": { get: { summary: "Database readiness", responses: { 200: { description: "Ready" } } } },
       "/api/v1/overview": { get: { summary: "Operator overview", responses: { 200: { description: "Current sites and incidents" } } } },
+      '/api/v1/organisations': { get: { summary: 'List organisation identities for site registration',
+        description: 'Protected by Caddy operator login. These grouping identifiers are not a partner-isolation boundary.',
+        security: [{ operatorBasic: [] }], responses: { 200: { description: 'Organisation UUIDs, slugs and names' } } } },
       "/api/v1/sites": {
         get: { summary: "List sites", responses: { 200: { description: "Sites" } } },
         post: {

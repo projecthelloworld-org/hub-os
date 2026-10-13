@@ -16,6 +16,15 @@ function siteContract(getStore, getOrganisation) {
   }));
   const input = () => ({ organisation_id: getOrganisation(), site_code: `TEST-${randomId()}`, name: 'Community library', country_code: 'ug' });
 
+  test('operators can find the organisation identity before registering the first site', async () => {
+    const app = createApp({ store: getStore(), config });
+    const response = await app(new Request('http://hubos.test/api/v1/organisations'));
+    expect(response.status).toBe(200);
+    const { organisations } = await response.json();
+    expect(organisations.some((organisation) => organisation.id === getOrganisation())).toBe(true);
+    expect(organisations.every((organisation) => organisation.name && organisation.slug && !Object.hasOwn(organisation, 'config'))).toBe(true);
+  });
+
   test('operators create live sites with stable identities, explicit classification and no invented health', async () => {
     const body = { ...input(), site_type: 'library', timezone: 'Africa/Kampala', latitude: 0.32, longitude: 32.58 };
     expect((await request('/api/v1/sites', body, { headers: { 'content-type': 'application/json' } })).status).toBe(401);

@@ -84,6 +84,9 @@ export function createApp({ store, config, resolveSecrets = resolveCredentials, 
       if (request.method === "GET" && path === "/api/v1/overview") {
         return withSecurity(json(await store.getDashboardData()));
       }
+      if (request.method === 'GET' && path === '/api/v1/organisations') {
+        return withSecurity(json({ organisations: await store.listOrganisations() }));
+      }
       if (request.method === "GET" && path === "/api/v1/sites") {
         return withSecurity(json({ sites: await store.listSites(url.searchParams.get("country")) }));
       }

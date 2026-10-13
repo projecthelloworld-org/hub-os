@@ -23,6 +23,12 @@ export class MemoryStore {
 
   async close() {}
 
+  async listOrganisations() {
+    return clone((this.state.organisations ?? [this.state.organisation]).filter(Boolean)
+      .map(({ id, slug, name, created_at, updated_at }) => ({ id, slug, name, created_at, updated_at }))
+      .sort((a, b) => a.slug.localeCompare(b.slug)));
+  }
+
   async createSite(metadata) {
     const organisations = this.state.organisations ?? [this.state.organisation];
     if (!organisations.some((organisation) => organisation?.id === metadata.organisation_id)) {

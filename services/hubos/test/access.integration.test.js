@@ -20,7 +20,7 @@ suite('Caddy operator and machine credential boundary (owned disposable fixture)
     expect((await call('/', { headers: { authorization: auth } })).status).toBe(200);
   }, 15000);
   test('console, documentation and reporting require operator authentication, not API keys', async () => {
-    for (const path of ['/', '/static/app.js', '/api/v1/sites', '/api/v1/openapi.json']) {
+    for (const path of ['/', '/static/app.js', '/api/v1/sites', '/api/v1/organisations', '/api/v1/openapi.json']) {
       const denied = await call(path);
       expect(denied.status).toBe(401);
       expect(denied.headers.get('www-authenticate')).toContain('Basic');
