@@ -43,6 +43,26 @@ curl -fsSL https://hubos.myhellohub.org/install.sh | \
   HUBOS_RELEASE_SHA256=THE_RELEASE_SHA256 bash
 ```
 
+The public URL follows GitHub's latest stable HubOS release. Drafts, prereleases, and unpublished changes on `main` are excluded. To install a specific version:
+
+```sh
+curl -fsSL https://hubos.myhellohub.org/releases/v0.1.0/install.sh | bash
+```
+
+### Maintaining the GitHub Pages publication
+
+The `Publish installer` workflow runs after the `Release` workflow succeeds and can also be run manually from GitHub Actions. It downloads the installers from published stable tags, verifies their embedded versions and archive URLs against the release assets, checks each archive's actual SHA-256, and validates Bash syntax before deploying. Any inconsistent release stops publication, preserving the currently deployed site.
+
+GitHub Pages uses GitHub Actions as its publishing source and `hubos.myhellohub.org` as its custom domain. Register that domain in repository Settings → Pages before updating Cloudflare. The DNS configuration is a DNS-only CNAME named `hubos` pointing to `projecthelloworld-org.github.io`; it replaces conflicting A or AAAA records for the same hostname. Enable Enforce HTTPS once GitHub provisions the certificate.
+
+The Pages payload contains the home page and verified installers. Release archives, SBOMs, and checksum manifests remain hosted as GitHub release assets. To rebuild the payload locally:
+
+```sh
+bun run scripts/build-pages.js
+```
+
+Generated files are written to the ignored `dist/pages` directory. After deployment, compare the public script with its release-tag version and run `bash install.sh --help` before declaring the endpoint live.
+
 Administrators should inspect a downloaded installer before running it with elevated privileges. HubOS does not install Docker silently. On Ubuntu and Debian, the operator must approve installation from Docker's official package repository. On macOS, the installer directs the operator to install and start Docker Desktop.
 
 ## Automated installation

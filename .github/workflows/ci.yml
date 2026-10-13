@@ -23,6 +23,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun test
       - run: bun run check
+      - name: Validate Pages builder syntax
+        working-directory: .
+        run: bun build scripts/build-pages.js --target=bun --outfile=/tmp/hubos-pages-build.js
       - run: bun audit --audit-level=moderate
       - name: Validate core Compose configuration
         working-directory: .
