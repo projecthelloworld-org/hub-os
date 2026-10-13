@@ -6,6 +6,7 @@ export const mockSchoolConnector = {
     name: "Synthetic community-site telemetry",
     version: "1.0.0",
     protocolVersion: "1.0",
+    demoOnly: true,
     collectionModes: ["scheduled-pull"],
     capabilities: [
       "connectivity-telemetry",

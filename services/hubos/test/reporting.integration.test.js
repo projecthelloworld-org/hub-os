@@ -123,4 +123,29 @@ suite('Reporting views and enforced read-only access', () => {
     expect((await reporting`SELECT freshness FROM analytics.collection_status
       WHERE source_connection_id = ${firstSource} AND as_of >= now() - interval '30 days'`)[0].freshness).toBe('stale');
   });
+
+  test('a paused source stops current status claims while preserving historical snapshots and other source evidence', async () => {
+    await store.upsertStatuses([{ site_id: siteId, source_connection_id: firstSource, domain: 'connectivity', status: 'healthy',
+      reason: 'Fixture current evidence', observed_at: new Date(), rule_version: 'fixture' },
+    { site_id: siteId, source_connection_id: secondSource, domain: 'power', status: 'healthy',
+      reason: 'Fixture other source', observed_at: new Date(), rule_version: 'fixture' }]);
+    await store.markSourceCollected(firstSource, new Date());
+    await store.db`UPDATE source_connections SET last_success_at = now(), status = 'healthy' WHERE id = ${secondSource}`;
+    expect((await reporting`SELECT connectivity FROM analytics.community_operations WHERE site_id = ${siteId}`)[0].connectivity).toBe('healthy');
+    await store.disableSource(firstSource);
+    expect((await reporting`SELECT connectivity,power FROM analytics.community_operations WHERE site_id = ${siteId}`)[0])
+      .toMatchObject({ connectivity: 'unknown', power: 'healthy' });
+    expect((await reporting`SELECT status FROM analytics.site_status_current WHERE site_id = ${siteId} AND domain = 'connectivity'`)[0].status).toBe('unknown');
+    expect((await store.getSiteStatus(siteId)).statuses.find((status) => status.domain === 'connectivity').status).toBe('unknown');
+    expect((await store.getDashboardData()).sites.find((site) => String(site.id) === siteId).statuses.find((status) => status.domain === 'connectivity').status).toBe('unknown');
+    expect((await store.db`SELECT status FROM status_snapshots WHERE site_id = ${siteId} AND domain = 'connectivity'`)[0].status).toBe('healthy');
+    await store.upsertStatuses([{ site_id: siteId, source_connection_id: firstSource, domain: 'connectivity', status: 'critical',
+      reason: 'Late evidence', observed_at: new Date(Date.now() + 1000), rule_version: 'fixture' }]);
+    expect((await store.db`SELECT status FROM status_snapshots WHERE site_id = ${siteId} AND domain = 'connectivity'`)[0].status).toBe('healthy');
+    await store.enableSource(firstSource, (await store.getSourceAdminContext(firstSource)).source);
+    expect((await reporting`SELECT connectivity FROM analytics.community_operations WHERE site_id = ${siteId}`)[0].connectivity).toBe('unknown');
+    await store.db`INSERT INTO status_snapshots (site_id,domain,status,reason,observed_at,rule_version)
+      VALUES (${siteId},'usage','healthy','Legacy unattributed snapshot',now(),'v0.1')`;
+    expect((await reporting`SELECT status FROM analytics.site_status_current WHERE site_id = ${siteId} AND domain = 'usage'`)[0].status).toBe('unknown');
+  });
 });

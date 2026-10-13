@@ -102,8 +102,12 @@ export class PostgresStore {
     `;
     if (sites.length === 0) throw new StoreError(404, "Site not found");
     const statuses = await this.db`
-      SELECT domain, status, reason, observed_at, rule_version
-      FROM status_snapshots WHERE site_id = ${siteId} ORDER BY domain
+      SELECT ss.domain, ss.status, ss.reason, ss.observed_at, ss.rule_version, ss.source_connection_id,
+             coalesce(sc.enabled, false) AS source_active
+      FROM status_snapshots ss LEFT JOIN source_connections sc ON sc.id = ss.source_connection_id
+        AND sc.organisation_id = ${sites[0].organisation_id}
+        AND sc.last_success_at BETWEEN now() - make_interval(secs => sc.freshness_seconds) AND now() + interval '1 minute'
+      WHERE ss.site_id = ${siteId} ORDER BY ss.domain
     `;
     return { site: sites[0], statuses: statuses.map((status) => currentStatus(status)) };
   }
@@ -116,6 +120,142 @@ export class PostgresStore {
       FROM source_connections ORDER BY name
     `;
     return rows.map((source) => currentSource(source));
+  }
+
+  async createSource(source) {
+    try {
+      const [created] = await this.db`INSERT INTO source_connections (organisation_id, name, connector_type, plugin_id, collection_mode,
+        base_url, config, enabled, status, is_demo, poll_interval_seconds, freshness_seconds)
+        VALUES (${source.organisation_id}, ${source.name}, ${source.plugin_id}, ${source.plugin_id}, ${source.collection_mode},
+          ${source.base_url}, ${JSON.stringify(source.config)}::text::jsonb, false, 'disabled', ${source.is_demo},
+          ${source.poll_interval_seconds}, ${source.freshness_seconds})
+        RETURNING id, organisation_id, name, connector_type, plugin_id, collection_mode, base_url,
+          enabled, status, is_demo, poll_interval_seconds, freshness_seconds, last_success_at, created_at, updated_at`;
+      return created;
+    } catch (error) {
+      if (error.errno === '23503') throw new StoreError(422, 'Organisation not found');
+      if (error.errno === '23505') throw new StoreError(409, 'Source name already exists in this organisation');
+      throw error;
+    }
+  }
+
+  async editSource(sourceId, validate) {
+    try {
+      return await this.db.begin(async (tx) => {
+        const [prior] = await tx`SELECT * FROM source_connections WHERE id = ${sourceId} FOR UPDATE`;
+        if (!prior) throw new StoreError(404, 'Source not found');
+        if (prior.enabled) throw new StoreError(409, 'Disable the source before changing settings');
+        const source = await validate({ ...prior, config: parseJsonValue(prior.config) });
+        const [updated] = await tx`UPDATE source_connections SET name = ${source.name}, base_url = ${source.base_url},
+          config = ${JSON.stringify(source.config)}::text::jsonb, poll_interval_seconds = ${source.poll_interval_seconds},
+          freshness_seconds = ${source.freshness_seconds}, last_success_at = NULL WHERE id = ${sourceId}
+          RETURNING id, organisation_id, name, connector_type, plugin_id, collection_mode, base_url, enabled, status, is_demo,
+            poll_interval_seconds, freshness_seconds, last_success_at, created_at, updated_at`;
+        return updated;
+      });
+    } catch (error) {
+      if (error.errno === '23505') throw new StoreError(409, 'Source name already exists in this organisation');
+      throw error;
+    }
+  }
+
+  async listMappings(sourceId) {
+    if (!(await this.db`SELECT id FROM source_connections WHERE id = ${sourceId}`).length) throw new StoreError(404, 'Source not found');
+    return this.db`SELECT id, source_connection_id, entity_type, entity_id, external_id, verified, mapping_method, created_at
+      FROM external_identifiers WHERE source_connection_id = ${sourceId} AND entity_type = 'site' ORDER BY external_id`;
+  }
+
+  async getSourceAdminContext(sourceId) {
+    const [source] = await this.db`SELECT * FROM source_connections WHERE id = ${sourceId}`;
+    if (!source) throw new StoreError(404, 'Source not found');
+    const mappings = await this.db`SELECT ei.external_id, s.id AS site_id, s.site_code, s.is_demo
+      FROM external_identifiers ei JOIN sites s ON s.id = ei.entity_id AND s.organisation_id = ${source.organisation_id}
+      WHERE ei.source_connection_id = ${sourceId} AND ei.entity_type = 'site' AND ei.verified ORDER BY ei.external_id`;
+    const monitors = await this.db`SELECT * FROM monitors WHERE source_connection_id = ${sourceId} ORDER BY external_id`;
+    return { source: { ...source, config: parseJsonValue(source.config) }, mappings, monitors };
+  }
+
+  async enableSource(sourceId, expected) {
+    return this.db.begin(async (tx) => {
+      const [source] = await tx`SELECT * FROM source_connections WHERE id = ${sourceId} FOR UPDATE`;
+      if (!source) throw new StoreError(404, 'Source not found');
+      if (!source.enabled) {
+        const [settings] = await tx`SELECT config = ${JSON.stringify(expected.config)}::text::jsonb
+          AND base_url IS NOT DISTINCT FROM ${expected.base_url} AND poll_interval_seconds = ${expected.poll_interval_seconds}
+          AND freshness_seconds = ${expected.freshness_seconds} AS unchanged FROM source_connections WHERE id = ${sourceId}`;
+        if (!settings.unchanged) throw new StoreError(409, 'Source settings changed during the connection test; test again');
+        if (source.collection_mode !== 'webhook' && !(await tx`SELECT ei.id FROM external_identifiers ei JOIN sites s
+          ON s.id = ei.entity_id AND s.organisation_id = ${source.organisation_id}
+          WHERE ei.source_connection_id = ${sourceId} AND ei.entity_type = 'site' AND ei.verified LIMIT 1`).length) {
+          throw new StoreError(422, 'Verify at least one community-site mapping before enabling collection');
+        }
+        await tx`UPDATE source_connections SET enabled = true, status = 'unknown', last_success_at = NULL WHERE id = ${sourceId}`;
+        if (source.collection_mode !== 'webhook') await tx`INSERT INTO connector_jobs (connector_id, source_connection_id, job_type,
+          schedule_interval_seconds, status) VALUES (${source.plugin_id}, ${sourceId}, 'collect', ${source.poll_interval_seconds}, 'pending')
+          ON CONFLICT (source_connection_id, job_type) WHERE source_connection_id IS NOT NULL DO UPDATE SET
+            connector_id = EXCLUDED.connector_id, schedule_interval_seconds = EXCLUDED.schedule_interval_seconds, status = 'pending',
+            next_run_at = now(), attempts = 0, locked_at = NULL, locked_by = NULL, lease_token = NULL, last_error = NULL`;
+      }
+      const [publicSource] = await tx`SELECT id, organisation_id, name, connector_type, plugin_id, collection_mode, base_url,
+        enabled, status, is_demo, poll_interval_seconds, freshness_seconds, last_success_at, created_at, updated_at
+        FROM source_connections WHERE id = ${sourceId}`;
+      return currentSource(publicSource);
+    });
+  }
+
+  async disableSource(sourceId) {
+    return this.db.begin(async (tx) => {
+      const [source] = await tx`UPDATE source_connections SET enabled = false, status = 'disabled', last_success_at = NULL
+        WHERE id = ${sourceId} RETURNING id, organisation_id, name, connector_type, plugin_id, collection_mode, base_url,
+          enabled, status, is_demo, poll_interval_seconds, freshness_seconds, last_success_at, created_at, updated_at`;
+      if (!source) throw new StoreError(404, 'Source not found');
+      await tx`UPDATE connector_runs SET status = 'failed', finished_at = now(), error = 'SOURCE_DISABLED'
+        WHERE status = 'running' AND connector_job_id IN (SELECT id FROM connector_jobs WHERE source_connection_id = ${sourceId})`;
+      await tx`UPDATE connector_jobs SET status = 'dead', locked_at = NULL, locked_by = NULL, lease_token = NULL
+        WHERE source_connection_id = ${sourceId}`;
+      return source;
+    });
+  }
+
+  async createMapping(sourceId, metadata) {
+    try {
+      return await this.db.begin(async (tx) => {
+        const [source] = await tx`SELECT organisation_id, enabled, config FROM source_connections WHERE id = ${sourceId} FOR UPDATE`;
+        if (!source) throw new StoreError(404, 'Source not found');
+        if (source.enabled) throw new StoreError(409, 'Disable the source before changing mappings');
+        if (parseJsonValue(source.config).mapping_policy === 'canonical_site_ids') throw new StoreError(409, 'Tool-owned mappings follow canonical provisioning');
+        const [site] = await tx`SELECT id FROM sites WHERE id = ${metadata.site_id} AND organisation_id = ${source.organisation_id}`;
+        if (!site) throw new StoreError(422, 'Site is not in the source organisation');
+        const [mapping] = await tx`INSERT INTO external_identifiers (source_connection_id, entity_type, entity_id, external_id, verified, mapping_method)
+          VALUES (${sourceId}, 'site', ${site.id}, ${metadata.external_id}, ${metadata.verified},
+            ${metadata.verified ? 'operator_verified' : 'operator_pending'}) RETURNING *`;
+        await tx`UPDATE source_connections SET last_success_at = NULL WHERE id = ${sourceId}`;
+        return mapping;
+      });
+    } catch (error) {
+      if (error.errno === '23505') throw new StoreError(409, 'External identifier already has a mapping in this source');
+      throw error;
+    }
+  }
+
+  async editMapping(sourceId, mappingId, changes) {
+    return this.db.begin(async (tx) => {
+      const [source] = await tx`SELECT organisation_id, enabled, config FROM source_connections WHERE id = ${sourceId} FOR UPDATE`;
+      const [mapping] = await tx`SELECT * FROM external_identifiers WHERE id = ${mappingId}
+        AND source_connection_id = ${sourceId} AND entity_type = 'site' FOR UPDATE`;
+      if (!source || !mapping) throw new StoreError(404, 'Mapping not found in this source');
+      if (source.enabled) throw new StoreError(409, 'Disable the source before changing mappings');
+      if (parseJsonValue(source.config).mapping_policy === 'canonical_site_ids') throw new StoreError(409, 'Tool-owned mappings follow canonical provisioning');
+      const siteId = changes.site_id ?? String(mapping.entity_id);
+      if (!(await tx`SELECT id FROM sites WHERE id = ${siteId} AND organisation_id = ${source.organisation_id}`).length) {
+        throw new StoreError(422, 'Site is not in the source organisation');
+      }
+      const verified = changes.verified ?? (siteId !== String(mapping.entity_id) ? false : mapping.verified);
+      const [updated] = await tx`UPDATE external_identifiers SET entity_id = ${siteId}, verified = ${verified},
+        mapping_method = ${verified ? 'operator_verified' : 'operator_pending'} WHERE id = ${mappingId} RETURNING *`;
+      await tx`UPDATE source_connections SET last_success_at = NULL WHERE id = ${sourceId}`;
+      return updated;
+    });
   }
 
   async listIncidents({ status = null, countryCode = null } = {}) {
@@ -146,8 +286,12 @@ export class PostgresStore {
   async getDashboardData() {
     const sites = await this.listSites();
     const statuses = await this.db`
-      SELECT site_id, domain, status, reason, observed_at, rule_version
-      FROM status_snapshots ORDER BY site_id, domain
+      SELECT ss.site_id, ss.domain, ss.status, ss.reason, ss.observed_at, ss.rule_version, ss.source_connection_id,
+             coalesce(sc.enabled, false) AS source_active
+      FROM status_snapshots ss JOIN sites s ON s.id = ss.site_id
+      LEFT JOIN source_connections sc ON sc.id = ss.source_connection_id AND sc.organisation_id = s.organisation_id
+        AND sc.last_success_at BETWEEN now() - make_interval(secs => sc.freshness_seconds) AND now() + interval '1 minute'
+      ORDER BY ss.site_id, ss.domain
     `;
     const incidents = await this.db`
       SELECT i.*, s.name AS site_name, s.country_code
@@ -207,10 +351,11 @@ export class PostgresStore {
           continue;
         }
         const siteId = sites[0].id;
-        const sources = await tx`SELECT id, organisation_id FROM source_connections WHERE id = ${item.source_connection_id}`;
+        const sources = await tx`SELECT id, organisation_id FROM source_connections
+          WHERE id = ${item.source_connection_id} AND enabled AND status <> 'disabled' FOR SHARE`;
         if (sources.length === 0 || String(sources[0].organisation_id) !== String(sites[0].organisation_id)) {
           result.rejected += 1;
-          result.errors.push(`observations[${index}]: Unknown source_connection_id`);
+          result.errors.push(`observations[${index}]: Unknown or disabled source_connection_id`);
           continue;
         }
         const mappings = await tx`
@@ -288,25 +433,30 @@ export class PostgresStore {
   async markSourceCollected(sourceId, observedAt) {
     await this.db`
       UPDATE source_connections SET last_success_at = ${observedAt}, status = 'healthy'
-      WHERE id = ${sourceId} AND (last_success_at IS NULL OR last_success_at <= ${observedAt})
+      WHERE id = ${sourceId} AND enabled AND (last_success_at IS NULL OR last_success_at <= ${observedAt})
     `;
   }
 
   async upsertStatuses(statuses) {
     await this.db.begin(async (tx) => {
       for (const status of statuses) {
+        if (status.source_connection_id) {
+          const [source] = await tx`SELECT enabled FROM source_connections WHERE id = ${status.source_connection_id} FOR SHARE`;
+          if (!source?.enabled) continue;
+        }
         await tx`
           INSERT INTO status_snapshots (
-            id, site_id, domain, status, reason, observed_at, rule_version
+            id, site_id, domain, status, reason, observed_at, rule_version, source_connection_id
           ) VALUES (
             ${randomId()}, ${status.site_id}, ${status.domain}, ${status.status},
-            ${status.reason}, ${status.observed_at}, ${status.rule_version}
+            ${status.reason}, ${status.observed_at}, ${status.rule_version}, ${status.source_connection_id ?? null}
           )
           ON CONFLICT (site_id, domain) DO UPDATE SET
             status = EXCLUDED.status,
             reason = EXCLUDED.reason,
             observed_at = EXCLUDED.observed_at,
             rule_version = EXCLUDED.rule_version,
+            source_connection_id = EXCLUDED.source_connection_id,
             updated_at = now()
           WHERE EXCLUDED.observed_at >= status_snapshots.observed_at
         `;
@@ -477,14 +627,15 @@ export class PostgresStore {
       for (const status of state.statuses) {
         await tx`
           INSERT INTO status_snapshots (
-            id, site_id, domain, status, reason, observed_at, rule_version
+            id, site_id, domain, status, reason, observed_at, rule_version, source_connection_id
           ) VALUES (
             ${status.id}, ${status.site_id}, ${status.domain}, ${status.status},
-            ${status.reason}, ${status.observed_at}, ${status.rule_version}
+            ${status.reason}, ${status.observed_at}, ${status.rule_version}, ${status.source_connection_id ?? null}
           )
           ON CONFLICT (site_id, domain) DO UPDATE SET
             status = EXCLUDED.status, reason = EXCLUDED.reason,
             observed_at = EXCLUDED.observed_at, rule_version = EXCLUDED.rule_version,
+            source_connection_id = EXCLUDED.source_connection_id,
             updated_at = now()
         `;
       }

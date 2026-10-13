@@ -89,9 +89,58 @@ describe('operational incident signals and delivery', () => {
     await send({ id: 'fixture', event_kind: 'opened', incident: { id: 'incident', title: 'Fixture outage', severity: 'high' } });
     expect(createNotificationSender({ HUBOS_NOTIFICATION_MODE: 'disabled' })).toBeNull();
   });
+
+  test('pausing a source fences late monitor evidence and recovery without changing the incident ledger', async () => {
+    const { store, source, monitor } = await fixture();
+    const signal = { rule_id: 'availability', subject_type: 'monitor', subject_id: monitor.id,
+      state: 'active', observed_at: new Date(Date.now() - 5000).toISOString() };
+    const opened = await store.applySignal(source.id, signal);
+    await store.disableSource(source.id);
+    await expect(store.applySignal(source.id, { ...signal, state: 'healthy', observed_at: new Date().toISOString() }))
+      .rejects.toThrow('Source is disabled');
+    await expect(store.ingestMonitorSamples(source.id, [{ monitor_id: monitor.id, status: 1,
+      response_ms: 20, origin: 'webhook', observed_at: new Date().toISOString() }])).rejects.toThrow('Source is disabled');
+    await store.markSourceCollected(source.id, new Date());
+    const context = await store.getSourceAdminContext(source.id);
+    expect(context.source.status).toBe('disabled');
+    expect(context.source.last_success_at).toBeNull();
+    expect(store.state.monitorSamples).toHaveLength(0);
+    expect(store.state.incidents.find((item) => item.id === opened.incident_id).status).toBe('open');
+    expect(store.state.notifications).toHaveLength(1);
+  });
+
+  test('pausing one source makes its status unknown in both site and console views without changing other evidence', async () => {
+    const store = new MemoryStore(buildDemoState());
+    const site = (await store.listSites()).find((site) => site.site_code === 'UG-DEMO-01');
+    const source = store.state.sourceConnections.find((source) => source.key === 'ug-unifi');
+    expect((await store.getSiteStatus(site.id)).statuses.find((status) => status.domain === 'connectivity').status).toBe('healthy');
+    await store.disableSource(source.id);
+    const statuses = (await store.getSiteStatus(site.id)).statuses;
+    expect(statuses.find((status) => status.domain === 'connectivity').status).toBe('unknown');
+    expect(statuses.find((status) => status.domain === 'power').status).toBe('healthy');
+    const dashboard = await store.getDashboardData();
+    expect(dashboard.sites.find((row) => row.id === site.id).statuses.find((status) => status.domain === 'connectivity').status).toBe('unknown');
+    await store.enableSource(source.id, (await store.getSourceAdminContext(source.id)).source);
+    expect((await store.getSiteStatus(site.id)).statuses.find((status) => status.domain === 'connectivity').status).toBe('unknown');
+  });
 });
 
 describe('source-scoped generic webhook lifecycle', () => {
+  test('pausing while a webhook authenticates rejects its stale context before recording recovery', async () => {
+    const { store, source, monitor } = await fixture();
+    const opened = await store.applySignal(source.id, { rule_id: 'availability', subject_type: 'monitor', subject_id: monitor.id,
+      state: 'active', observed_at: new Date(Date.now() - 5000).toISOString() });
+    const app = createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), registry: createConnectorRegistry([kuma]),
+      resolveSecrets: async () => { await store.disableSource(source.id); return { webhookKey: 'fixture-webhook-key' }; } });
+    const response = await app(new Request(`http://fixture/api/v1/source-connections/${source.id}/webhook`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-hubos-webhook-key': 'fixture-webhook-key' },
+      body: JSON.stringify({ monitor: { id: 42 }, heartbeat: { status: 1, time: new Date().toISOString(), ping: 20 } }),
+    }));
+    expect(response.status).toBe(422);
+    expect(store.state.monitorSamples).toHaveLength(0);
+    expect(store.state.incidents.find((incident) => incident.id === opened.incident_id).status).toBe('open');
+    expect(store.state.notifications).toHaveLength(1);
+  });
   test('authenticated empty connection tests are ignored, not healthy evidence', async () => {
     const { store, source } = await fixture();
     const app = createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), registry: createConnectorRegistry([kuma]),

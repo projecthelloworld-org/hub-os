@@ -93,4 +93,34 @@ suite('Caddy operator and machine credential boundary (owned disposable fixture)
     expect((await call(ingest, { method: 'POST', headers: { ...headers, 'x-hubos-ingest-key': 'fixture-only-ingest-key' }, body: '{"observations":[]}' })).status).toBe(422);
     expect((await call(`${path}?ignored=1`, { method: 'GET', headers: { 'x-hubos-webhook-key': 'fixture-only-webhook-key' } })).status).toBe(401);
   });
+  test('source and mapping administration remains operator-protected and does not expose credential settings', async () => {
+    const inventory = await (await call('/api/v1/sites', { headers: { authorization: auth } })).json();
+    const site = inventory.sites[0];
+    const credentialReference = `env:ACCESS_FIXTURE_UNUSED_${randomId().replaceAll('-', '').toUpperCase()}`;
+    const metadata = { organisation_id: site.organisation_id, name: `Access controller ${randomId()}`, plugin_id: 'unifi',
+      collection_mode: 'controller_pull', base_url: 'https://controller.example.invalid/proxy/network/integration/',
+      config: { credential_refs: { apiKey: credentialReference } } };
+    const headers = { 'content-type': 'application/json', authorization: auth };
+    const write = (path, body = {}, method = 'POST') => call(path, { method, headers, body: JSON.stringify(body) });
+    expect((await call('/api/v1/source-connections', { method: 'POST', headers: { 'content-type': 'application/json',
+      'x-hubos-ingest-key': 'fixture-only-ingest-key' }, body: JSON.stringify(metadata) })).status).toBe(401);
+    const registered = await write('/api/v1/source-connections', metadata);
+    expect(registered.status).toBe(201);
+    const source = await registered.json(), path = `/api/v1/source-connections/${source.id}`;
+    expect(source).toMatchObject({ enabled: false, status: 'disabled' });
+    expect(source).not.toHaveProperty('config');
+    expect((await write(path, { name: `Configured access controller ${randomId()}` }, 'PATCH')).status).toBe(200);
+    const mapped = await write(`${path}/mappings`, { site_id: site.id, external_id: 'controller-site', verified: true });
+    expect(mapped.status).toBe(201);
+    const mapping = await mapped.json();
+    expect((await call(`${path}/mappings`, { headers: { 'x-hubos-admin-key': 'fixture-only-admin-key' } })).status).toBe(401);
+    expect((await write(`${path}/mappings/${mapping.id}`, { verified: false }, 'PATCH')).status).toBe(200);
+    const tested = await write(`${path}/test`);
+    expect(tested.status).toBe(502);
+    expect(await tested.json()).toMatchObject({ connected: false, code: 'CREDENTIAL_UNAVAILABLE' });
+    expect((await write(`${path}/disable`)).status).toBe(200);
+    const listed = await (await call('/api/v1/source-connections', { headers: { authorization: auth } })).json();
+    expect(listed.source_connections.find((item) => item.id === source.id)).toMatchObject({ enabled: false, status: 'disabled' });
+    expect(JSON.stringify(listed)).not.toContain(credentialReference);
+  });
 });

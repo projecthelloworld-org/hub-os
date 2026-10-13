@@ -2,7 +2,7 @@ import { randomId } from "../ids.js";
 import { StoreError } from "./errors.js";
 import { safeError, sanitizeAttributes } from '../privacy.js';
 import { rules, validateSignal, decideSignalTransition } from '../alerts/signals.js';
-import { currentSource, currentStatus } from './freshness.js';
+import { currentSource, currentStatus, isCurrentEvidence } from './freshness.js';
 
 function clone(value) {
   return structuredClone(value);
@@ -64,12 +64,145 @@ export class MemoryStore {
     const statuses = this.state.statuses
       .filter((item) => item.site_id === siteId)
       .sort((a, b) => a.domain.localeCompare(b.domain));
-    return clone({ site, statuses: statuses.map((status) => currentStatus(status)) });
+    return clone({ site, statuses: statuses.map((status) => this.currentStatus(status)) });
+  }
+
+  currentStatus(status) {
+    const source = this.state.sourceConnections.find((source) => source.id === status.source_connection_id);
+    const site = this.state.sites.find((site) => site.id === status.site_id);
+    return currentStatus({ ...status, source_active: Boolean(source?.enabled && site?.organisation_id === source.organisation_id
+      && isCurrentEvidence(source.last_success_at, source.freshness_seconds ?? 300)) });
   }
 
   async listSourceConnections() {
     return clone([...this.state.sourceConnections].sort((a, b) => a.name.localeCompare(b.name))
       .map(({ config, key, ...source }) => currentSource(source)));
+  }
+
+  async createSource(metadata) {
+    if (!(this.state.organisations ?? [this.state.organisation]).some((organisation) => organisation?.id === metadata.organisation_id)) {
+      throw new StoreError(422, 'Organisation not found');
+    }
+    if (this.state.sourceConnections.some((source) => source.organisation_id === metadata.organisation_id && source.name === metadata.name)) {
+      throw new StoreError(409, 'Source name already exists in this organisation');
+    }
+    const now = new Date().toISOString();
+    const source = { ...clone(metadata), id: randomId(), connector_type: metadata.plugin_id, enabled: false,
+      status: 'disabled', last_success_at: null, created_at: now, updated_at: now };
+    this.state.sourceConnections.push(source);
+    const { config, ...publicSource } = source;
+    return clone(publicSource);
+  }
+
+  async editSource(sourceId, validate) {
+    this.sourceEdits ??= new Map();
+    const work = (this.sourceEdits.get(sourceId) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+      if (!source) throw new StoreError(404, 'Source not found');
+      if (source.enabled) throw new StoreError(409, 'Disable the source before changing settings');
+      const updated = await validate(clone(source));
+      if (source.enabled) throw new StoreError(409, 'Source was enabled while its settings were being validated');
+      if (this.state.sourceConnections.some((item) => item.id !== sourceId && item.organisation_id === source.organisation_id && item.name === updated.name)) {
+        throw new StoreError(409, 'Source name already exists in this organisation');
+      }
+      Object.assign(source, clone(updated), { last_success_at: null, updated_at: new Date().toISOString() });
+      const { config, key, ...publicSource } = source;
+      return clone(publicSource);
+    });
+    this.sourceEdits.set(sourceId, work);
+    try { return await work; }
+    finally { if (this.sourceEdits.get(sourceId) === work) this.sourceEdits.delete(sourceId); }
+  }
+
+  async listMappings(sourceId) {
+    if (!this.state.sourceConnections.some((source) => source.id === sourceId)) throw new StoreError(404, 'Source not found');
+    return clone(this.state.mappings.filter((mapping) => mapping.source_connection_id === sourceId && mapping.entity_type === 'site')
+      .sort((a, b) => a.external_id.localeCompare(b.external_id)));
+  }
+
+  async getSourceAdminContext(sourceId) {
+    const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+    if (!source) throw new StoreError(404, 'Source not found');
+    return clone({ source, monitors: this.state.monitors.filter((monitor) => monitor.source_connection_id === sourceId),
+      mappings: this.state.mappings.filter((mapping) => mapping.source_connection_id === sourceId && mapping.entity_type === 'site' && mapping.verified)
+        .flatMap((mapping) => {
+          const site = this.state.sites.find((site) => site.id === mapping.entity_id && site.organisation_id === source.organisation_id);
+          return site ? [{ external_id: mapping.external_id, site_id: site.id, site_code: site.site_code, is_demo: site.is_demo }] : [];
+        }) });
+  }
+
+  async enableSource(sourceId, expected) {
+    const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+    if (!source) throw new StoreError(404, 'Source not found');
+    if (!source.enabled) {
+      if (source.base_url !== expected.base_url || JSON.stringify(source.config) !== JSON.stringify(expected.config)
+        || source.poll_interval_seconds !== expected.poll_interval_seconds || source.freshness_seconds !== expected.freshness_seconds) {
+        throw new StoreError(409, 'Source settings changed during the connection test; test again');
+      }
+      if (source.collection_mode !== 'webhook' && !this.state.mappings.some((mapping) => mapping.source_connection_id === sourceId
+        && mapping.entity_type === 'site' && mapping.verified && this.state.sites.some((site) => site.id === mapping.entity_id
+          && site.organisation_id === source.organisation_id))) {
+        throw new StoreError(422, 'Verify at least one community-site mapping before enabling collection');
+      }
+      Object.assign(source, { enabled: true, status: 'unknown', last_success_at: null, updated_at: new Date().toISOString() });
+      if (source.collection_mode !== 'webhook') {
+        let job = this.state.connectorJobs.find((job) => job.source_connection_id === sourceId && (job.job_type ?? 'collect') === 'collect');
+        if (!job) { job = { id: randomId(), source_connection_id: sourceId, connector_id: source.plugin_id, job_type: 'collect', max_attempts: 5, payload: {} };
+          this.state.connectorJobs.push(job); }
+        Object.assign(job, { status: 'pending', attempts: 0, locked_at: null, locked_by: null, lease_token: null,
+          next_run_at: new Date().toISOString(), schedule_interval_seconds: source.poll_interval_seconds });
+      }
+    }
+    const { config, key, ...publicSource } = source;
+    return clone(currentSource(publicSource));
+  }
+
+  async disableSource(sourceId) {
+    const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+    if (!source) throw new StoreError(404, 'Source not found');
+    Object.assign(source, { enabled: false, status: 'disabled', last_success_at: null, updated_at: new Date().toISOString() });
+    for (const job of this.state.connectorJobs.filter((job) => job.source_connection_id === sourceId)) {
+      Object.assign(job, { status: 'dead', lease_token: null, locked_at: null, locked_by: null });
+      for (const run of this.state.connectorRuns ?? []) if (run.connector_job_id === job.id && run.status === 'running') {
+        Object.assign(run, { status: 'failed', error: 'SOURCE_DISABLED' });
+      }
+    }
+    const { config, key, ...publicSource } = source;
+    return clone(publicSource);
+  }
+
+  async createMapping(sourceId, metadata) {
+    const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+    if (!source) throw new StoreError(404, 'Source not found');
+    if (source.enabled) throw new StoreError(409, 'Disable the source before changing mappings');
+    if (source.config?.mapping_policy === 'canonical_site_ids') throw new StoreError(409, 'Tool-owned mappings follow canonical provisioning');
+    const site = this.state.sites.find((site) => site.id === metadata.site_id && site.organisation_id === source.organisation_id);
+    if (!site) throw new StoreError(422, 'Site is not in the source organisation');
+    if (this.state.mappings.some((mapping) => mapping.source_connection_id === sourceId && mapping.entity_type === 'site' && mapping.external_id === metadata.external_id)) {
+      throw new StoreError(409, 'External identifier already has a mapping in this source');
+    }
+    const mapping = { id: randomId(), source_connection_id: sourceId, entity_type: 'site', entity_id: site.id,
+      external_id: metadata.external_id, verified: metadata.verified, mapping_method: metadata.verified ? 'operator_verified' : 'operator_pending',
+      created_at: new Date().toISOString() };
+    this.state.mappings.push(mapping);
+    source.last_success_at = null;
+    return clone(mapping);
+  }
+
+  async editMapping(sourceId, mappingId, changes) {
+    const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+    const mapping = this.state.mappings.find((mapping) => mapping.id === mappingId && mapping.source_connection_id === sourceId && mapping.entity_type === 'site');
+    if (!source || !mapping) throw new StoreError(404, 'Mapping not found in this source');
+    if (source.enabled) throw new StoreError(409, 'Disable the source before changing mappings');
+    if (source.config?.mapping_policy === 'canonical_site_ids') throw new StoreError(409, 'Tool-owned mappings follow canonical provisioning');
+    const siteId = changes.site_id ?? mapping.entity_id;
+    if (!this.state.sites.some((site) => site.id === siteId && site.organisation_id === source.organisation_id)) {
+      throw new StoreError(422, 'Site is not in the source organisation');
+    }
+    const verified = changes.verified ?? (siteId !== mapping.entity_id ? false : mapping.verified);
+    Object.assign(mapping, { entity_id: siteId, verified, mapping_method: verified ? 'operator_verified' : 'operator_pending' });
+    source.last_success_at = null;
+    return clone(mapping);
   }
 
   async listIncidents({ status = null, countryCode = null } = {}) {
@@ -88,7 +221,7 @@ export class MemoryStore {
       ...site,
       statuses: this.state.statuses
         .filter((status) => status.site_id === site.id)
-        .sort((a, b) => a.domain.localeCompare(b.domain)).map((status) => currentStatus(status)),
+        .sort((a, b) => a.domain.localeCompare(b.domain)).map((status) => this.currentStatus(status)),
     }));
     const incidents = await this.listIncidents();
     const siteById = new Map(sites.map((site) => [site.id, site]));
@@ -146,9 +279,9 @@ export class MemoryStore {
       }
       const site = candidates[0];
       const source = this.state.sourceConnections.find((item) => item.id === observation.source_connection_id);
-      if (!source || source.organisation_id !== site.organisation_id) {
+      if (!source || !source.enabled || source.status === 'disabled' || source.organisation_id !== site.organisation_id) {
         result.rejected += 1;
-        result.errors.push(`observations[${index}]: Unknown source_connection_id`);
+        result.errors.push(`observations[${index}]: Unknown or disabled source_connection_id`);
         continue;
       }
       const verified = this.state.mappings.some(
@@ -221,6 +354,9 @@ export class MemoryStore {
   }
 
   async ingestMonitorSamples(sourceId, samples) {
+    const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+    if (!source) throw new StoreError(404, 'Source not found');
+    if (!source.enabled) throw new StoreError(422, 'Source is disabled');
     let accepted = 0;
     for (const sample of samples) {
       const monitor = this.state.monitors.find((item) => item.id === sample.monitor_id && item.source_connection_id === sourceId && item.enabled);
@@ -233,6 +369,9 @@ export class MemoryStore {
 
   async applySignal(sourceId, incoming) {
     const signal = validateSignal(incoming);
+    const activeSource = this.state.sourceConnections.find((source) => source.id === sourceId);
+    if (!activeSource) throw new StoreError(404, 'Source not found');
+    if (!activeSource.enabled) throw new StoreError(422, 'Source is disabled');
     let subject;
     if (signal.subject_type === 'monitor') {
       const monitor = this.state.monitors.find((item) => item.id === signal.subject_id && item.source_connection_id === sourceId && item.enabled);
@@ -301,7 +440,7 @@ export class MemoryStore {
 
   async markSourceCollected(sourceId, observedAt) {
     const source = this.state.sourceConnections.find((source) => source.id === sourceId);
-    if (source && (!source.last_success_at || Date.parse(source.last_success_at) <= Date.parse(observedAt))) {
+    if (source?.enabled && (!source.last_success_at || Date.parse(source.last_success_at) <= Date.parse(observedAt))) {
       source.last_success_at = new Date(observedAt).toISOString();
       source.status = 'healthy';
     }
@@ -309,6 +448,10 @@ export class MemoryStore {
 
   async upsertStatuses(statuses) {
     for (const status of statuses) {
+      if (status.source_connection_id) {
+        const source = this.state.sourceConnections.find((source) => source.id === status.source_connection_id);
+        if (!source?.enabled) continue;
+      }
       const existing = this.state.statuses.find(
         (item) => item.site_id === status.site_id && item.domain === status.domain,
       );

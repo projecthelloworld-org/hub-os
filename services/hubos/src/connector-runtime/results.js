@@ -55,7 +55,8 @@ export async function persistConnectorResult({ store, target, connector, normali
   if (projectedSamples.length) summary.monitor_samples = (await store.ingestMonitorSamples(target.source.id, projectedSamples)).accepted;
   for (const signal of projectedSignals) { await store.applySignal(target.source.id, signal); summary.signals += 1; }
   await store.upsertStatuses(statuses.map((status) => ({
-    site_id: status.site_id, domain: status.domain, status: status.status, observed_at: status.observed_at,
+    site_id: status.site_id, source_connection_id: target.source.id,
+    domain: status.domain, status: status.status, observed_at: status.observed_at,
     reason: `Operational evidence reported ${status.status} by ${connector.manifest.id}`,
     rule_version: `${connector.manifest.id}:${connector.manifest.version}`,
   })));

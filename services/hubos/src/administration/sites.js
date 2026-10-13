@@ -9,7 +9,7 @@ export function requireUuid(value, field = 'Identifier') {
   return value.toLowerCase();
 }
 
-function boundedText(value, field, maximum) {
+export function boundedText(value, field, maximum) {
   if (typeof value !== 'string' || !value.trim() || value.length > maximum || /[\u0000-\u001f\u007f]/.test(value)) {
     invalid(`${field} must be non-empty text of at most ${maximum} characters without control characters`);
   }

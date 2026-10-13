@@ -143,6 +143,8 @@ export function buildDemoState(date = new Date()) {
       statuses.push({
         id: stableId("status", `${site.id}:${domain}`),
         site_id: site.id,
+        source_connection_id: domain === 'connectivity' ? sourcesByKey[networkSourceKey(site.site_code)].id
+          : domain === 'power' ? sourcesByKey.remot.id : sourcesByKey.headwind.id,
         domain,
         status: profile[domain],
         reason: statusReason(domain, profile[domain]),

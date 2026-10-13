@@ -6,8 +6,9 @@ export function isCurrentEvidence(observedAt, maximumAgeSeconds, now = Date.now(
 }
 
 export function currentStatus(evidence, now = Date.now()) {
-  return isCurrentEvidence(evidence.observed_at, 300, now) ? { ...evidence }
-    : { ...evidence, status: 'unknown', reason: 'Evidence is missing, stale or outside the accepted clock tolerance' };
+  const { source_active, ...status } = evidence;
+  return source_active !== false && isCurrentEvidence(evidence.observed_at, 300, now) ? status
+    : { ...status, status: 'unknown', reason: 'Evidence is missing, stale, unattributed or from a disabled source' };
 }
 
 export function currentSource(source, now = Date.now()) {

@@ -10,6 +10,7 @@ export function validateConnector(connector) {
   }
   if (!/^[a-z][a-z0-9-]{0,79}$/.test(manifest.id)) throw new Error('Invalid connector id');
   if (manifest.protocolVersion !== '1.0') throw new Error('Unsupported connector protocol version');
+  if (manifest.demoOnly !== undefined && typeof manifest.demoOnly !== 'boolean') throw new Error('demoOnly must be a boolean');
   if (!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(manifest.version)) throw new Error('Connector version must be semver');
   if (!Array.isArray(manifest.collectionModes) || manifest.collectionModes.length === 0) {
     throw new Error(`Connector ${manifest.id} must declare at least one collection mode`);

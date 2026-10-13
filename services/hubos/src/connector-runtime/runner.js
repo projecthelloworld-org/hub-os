@@ -20,9 +20,12 @@ export async function runConnectorJob({ store, job, workerId, observedAt = new D
     }
   };
   try {
+    await renew();
+    if (leaseLost) throw new CollectionError('WORKER_LEASE_LOST');
     runId = await store.startConnectorRun(job, workerId);
     const connector = registry.getConnector(job.connector_id);
     if (!connector) throw new CollectionError('PLUGIN_NOT_INSTALLED');
+    if (connector.manifest.demoOnly && !demoMode) throw new CollectionError('DEMO_SOURCE_DISABLED');
     const targets = await store.listConnectorTargets(job);
     const summary = { targets: targets.length, accepted: 0, duplicates: 0, rejected: 0 };
     heartbeat = setInterval(() => {

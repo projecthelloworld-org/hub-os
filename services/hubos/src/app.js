@@ -12,6 +12,9 @@ import { resolveCredentials } from './connector-runtime/secrets.js';
 import { persistConnectorResult } from './connector-runtime/results.js';
 import { profileFor } from './demo/data.js';
 import { requireUuid, validateSite } from './administration/sites.js';
+import { validateSource, validateSourceChanges } from './administration/sources.js';
+import { validateMapping, validateMappingChanges } from './administration/mappings.js';
+import { testSourceConnection } from './administration/connection-test.js';
 
 const securityHeaders = {
   "x-content-type-options": "nosniff",
@@ -49,7 +52,7 @@ function errorResponse(error) {
   return json({ error: message }, status);
 }
 
-export function createApp({ store, config, resolveSecrets = resolveCredentials, registry = { getConnector } }) {
+export function createApp({ store, config, resolveSecrets = resolveCredentials, registry = { getConnector, listConnectorManifests } }) {
   return async function fetch(request) {
     try {
       const url = new URL(request.url);
@@ -109,8 +112,71 @@ export function createApp({ store, config, resolveSecrets = resolveCredentials, 
       if (request.method === "GET" && path === "/api/v1/source-connections") {
         return withSecurity(json({ source_connections: await store.listSourceConnections() }));
       }
+      if (request.method === 'POST' && path === '/api/v1/source-connections') {
+        requireApiKey(request, config, 'admin');
+        const source = await validateSource(await readJson(request), { getConnector: registry.getConnector, demoMode: config.demoMode });
+        return withSecurity(json(await store.createSource(source), 201));
+      }
+      const sourceEdit = path.match(/^\/api\/v1\/source-connections\/([^/]+)$/);
+      if (request.method === 'PATCH' && sourceEdit) {
+        requireApiKey(request, config, 'admin');
+        const sourceId = requireUuid(sourceEdit[1], 'sourceId');
+        const changes = await readJson(request);
+        const source = await store.editSource(sourceId, (prior) => validateSourceChanges(changes, prior,
+          { getConnector: registry.getConnector, demoMode: config.demoMode }));
+        return withSecurity(json(source));
+      }
+      const sourceMappings = path.match(/^\/api\/v1\/source-connections\/([^/]+)\/mappings$/);
+      if (sourceMappings && ['GET', 'POST'].includes(request.method)) {
+        requireApiKey(request, config, 'admin');
+        const sourceId = requireUuid(sourceMappings[1], 'sourceId');
+        if (request.method === 'GET') return withSecurity(json({ mappings: await store.listMappings(sourceId) }));
+        const mapping = validateMapping(await readJson(request));
+        return withSecurity(json(await store.createMapping(sourceId, mapping), 201));
+      }
+      const sourceTest = path.match(/^\/api\/v1\/source-connections\/([^/]+)\/test$/);
+      if (request.method === 'POST' && sourceTest) {
+        requireApiKey(request, config, 'admin');
+        const body = await readJson(request, { allowEmpty: true });
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) {
+          throw Object.assign(new Error('Connection test accepts an empty JSON object only'), { status: 422 });
+        }
+        const sourceId = requireUuid(sourceTest[1], 'sourceId');
+        const target = await store.getSourceAdminContext(sourceId);
+        const result = await testSourceConnection({ target, registry, resolveSecrets, demoMode: config.demoMode });
+        return withSecurity(json(result, result.connected ? 200 : 502));
+      }
+      const mappingEdit = path.match(/^\/api\/v1\/source-connections\/([^/]+)\/mappings\/([^/]+)$/);
+      if (request.method === 'PATCH' && mappingEdit) {
+        requireApiKey(request, config, 'admin');
+        const sourceId = requireUuid(mappingEdit[1], 'sourceId'), mappingId = requireUuid(mappingEdit[2], 'mappingId');
+        const changes = validateMappingChanges(await readJson(request));
+        return withSecurity(json(await store.editMapping(sourceId, mappingId, changes)));
+      }
+      const sourceAction = path.match(/^\/api\/v1\/source-connections\/([^/]+)\/(enable|disable)$/);
+      if (request.method === 'POST' && sourceAction) {
+        requireApiKey(request, config, 'admin');
+        const sourceId = requireUuid(sourceAction[1], 'sourceId');
+        const body = await readJson(request, { allowEmpty: true });
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) {
+          throw Object.assign(new Error('Source action accepts an empty JSON object only'), { status: 422 });
+        }
+        if (sourceAction[2] === 'disable') return withSecurity(json(await store.disableSource(sourceId)));
+        const target = await store.getSourceAdminContext(sourceId);
+        if ((target.source.is_demo || registry.getConnector(target.source.plugin_id)?.manifest.demoOnly) && !config.demoMode) {
+          throw Object.assign(new Error('Demonstration source disabled in live mode'), { status: 403 });
+        }
+        if (!target.source.enabled) {
+          if (!target.mappings.length && target.source.collection_mode !== 'webhook') {
+            throw Object.assign(new Error('Verify at least one community-site mapping before enabling collection'), { status: 422 });
+          }
+          const result = await testSourceConnection({ target, registry, resolveSecrets, demoMode: config.demoMode });
+          if (!result.connected) return withSecurity(json(result, 502));
+        }
+        return withSecurity(json(await store.enableSource(sourceId, target.source)));
+      }
       if (request.method === "GET" && path === "/api/v1/connectors") {
-        return withSecurity(json({ connectors: listConnectorManifests() }));
+        return withSecurity(json({ connectors: registry.listConnectorManifests() }));
       }
       if (request.method === "GET" && path === "/api/v1/incidents") {
         return withSecurity(json({

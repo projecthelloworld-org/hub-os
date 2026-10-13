@@ -9,6 +9,7 @@ import { sanitizeAttributes, safeError } from '../src/privacy.js';
 import { MemoryStore } from '../src/store/memory.js';
 import { buildDemoState } from '../src/demo/data.js';
 import { loadConfig } from '../src/config.js';
+import { createApp } from '../src/app.js';
 
 async function claimedStore() {
   const store = new MemoryStore(buildDemoState(new Date(Date.now() - 60000)));
@@ -29,6 +30,14 @@ describe('trusted source-driven plugin runtime', () => {
     expect(() => createConnectorRegistry([mockSchoolConnector, mockSchoolConnector])).toThrow('Duplicate');
     expect(() => createConnectorRegistry([{ ...mockSchoolConnector,
       manifest: { ...mockSchoolConnector.manifest, protocolVersion: '2.0' } }])).toThrow('protocol');
+  });
+
+  test('the connector inventory reflects the installed registry used by administration', async () => {
+    const registry = await loadConnectorRegistry({ pluginConfigPath: new URL('fixtures/plugins-enabled.json', import.meta.url).pathname });
+    const app = createApp({ store: new MemoryStore(buildDemoState()), config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), registry });
+    const response = await app(new Request('http://fixture/api/v1/connectors'));
+    expect(response.status).toBe(200);
+    expect((await response.json()).connectors.map((manifest) => manifest.id)).toContain('starter-environment');
   });
 
   test('supports a new metric through the same runner, mapping and evidence store', async () => {

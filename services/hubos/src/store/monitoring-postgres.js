@@ -21,26 +21,35 @@ export async function registerMonitor(db, monitor) {
 }
 
 export async function ingestMonitorSamples(db, sourceId, samples) {
-  let accepted = 0;
-  for (const item of samples) {
-    if (!Number.isFinite(Date.parse(item.observed_at)) || ![null, 0, 1].includes(item.status)
-      || (item.response_ms != null && (!Number.isFinite(item.response_ms) || item.response_ms < 0))) {
-      throw new StoreError(422, 'Invalid monitor measurement');
+  return db.begin(async (tx) => {
+    // Hold the source row until evidence commits; pausing takes an exclusive lock.
+    const [source] = await tx`SELECT enabled FROM source_connections WHERE id = ${sourceId} FOR SHARE`;
+    if (!source) throw new StoreError(404, 'Source not found');
+    if (!source.enabled) throw new StoreError(422, 'Source is disabled');
+    let accepted = 0;
+    for (const item of samples) {
+      if (!Number.isFinite(Date.parse(item.observed_at)) || ![null, 0, 1].includes(item.status)
+        || (item.response_ms != null && (!Number.isFinite(item.response_ms) || item.response_ms < 0))) {
+        throw new StoreError(422, 'Invalid monitor measurement');
+      }
+      const rows = await tx`
+        INSERT INTO monitor_samples (monitor_id, observed_at, status, response_ms, origin)
+        SELECT id, ${item.observed_at}, ${item.status}, ${item.status === 1 ? item.response_ms ?? null : null}, ${item.origin}
+        FROM monitors WHERE id = ${item.monitor_id} AND source_connection_id = ${sourceId} AND enabled
+        ON CONFLICT (monitor_id, observed_at) DO NOTHING RETURNING id
+      `;
+      accepted += rows.length;
     }
-    const rows = await db`
-      INSERT INTO monitor_samples (monitor_id, observed_at, status, response_ms, origin)
-      SELECT id, ${item.observed_at}, ${item.status}, ${item.status === 1 ? item.response_ms ?? null : null}, ${item.origin}
-      FROM monitors WHERE id = ${item.monitor_id} AND source_connection_id = ${sourceId} AND enabled
-      ON CONFLICT (monitor_id, observed_at) DO NOTHING RETURNING id
-    `;
-    accepted += rows.length;
-  }
-  return { accepted, duplicates: samples.length - accepted };
+    return { accepted, duplicates: samples.length - accepted };
+  });
 }
 
 export async function applySignal(db, sourceId, incoming) {
   const signal = validateSignal(incoming);
   return db.begin(async (tx) => {
+    const [source] = await tx`SELECT enabled FROM source_connections WHERE id = ${sourceId} FOR SHARE`;
+    if (!source) throw new StoreError(404, 'Source not found');
+    if (!source.enabled) throw new StoreError(422, 'Source is disabled');
     let subject;
     if (signal.subject_type === 'monitor') {
       [subject] = await tx`SELECT site_id, id AS monitor_id, name, scope, is_demo

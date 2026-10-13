@@ -77,4 +77,22 @@ suite('PostgreSQL incident ledger and coverage', () => {
     expect(current.status).toBe('unknown');
     expect(current.response_ms).toBeNull();
   });
+
+  test('paused sources reject late monitor evidence and cannot resolve incidents or mark collection healthy', async () => {
+    const signal = { rule_id: 'availability', subject_type: 'monitor', subject_id: String(monitor.id),
+      state: 'active', observed_at: new Date(Date.now() - 1000).toISOString() };
+    const opened = await store.applySignal(sourceId, signal);
+    const samples = (await store.db`SELECT count(*)::int AS count FROM monitor_samples WHERE monitor_id = ${monitor.id}`)[0].count;
+    const notifications = (await store.db`SELECT count(*)::int AS count FROM notification_outbox WHERE incident_id = ${opened.incident_id}`)[0].count;
+    await store.disableSource(sourceId);
+    await expect(store.applySignal(sourceId, { ...signal, state: 'healthy', observed_at: new Date().toISOString() }))
+      .rejects.toThrow('Source is disabled');
+    await expect(store.ingestMonitorSamples(sourceId, [{ monitor_id: String(monitor.id), status: 1,
+      response_ms: 20, origin: 'webhook', observed_at: new Date().toISOString() }])).rejects.toThrow('Source is disabled');
+    await store.markSourceCollected(sourceId, new Date());
+    expect((await store.getSourceAdminContext(sourceId)).source).toMatchObject({ enabled: false, status: 'disabled', last_success_at: null });
+    expect((await store.db`SELECT status FROM incidents WHERE id = ${opened.incident_id}`)[0].status).toBe('open');
+    expect((await store.db`SELECT count(*)::int AS count FROM monitor_samples WHERE monitor_id = ${monitor.id}`)[0].count).toBe(samples);
+    expect((await store.db`SELECT count(*)::int AS count FROM notification_outbox WHERE incident_id = ${opened.incident_id}`)[0].count).toBe(notifications);
+  });
 });
