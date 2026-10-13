@@ -3,8 +3,9 @@
 The `unifi`, `headwind` and `odk` modules use the same source-driven plugin lifecycle,
 canonical site mappings and numeric evidence store. No vendor-specific reporting
 tables or core routing changes are needed. All three are fixture-tested. Headwind
-also passed a fresh local Community integration run; actual ODK integration and
-the remaining release verification gates are still pending.
+and ODK also passed fresh local upstream API integration runs. Remaining release
+verification gates are still pending; this is not a claim of hardware testing or
+universal real-deployment compatibility.
 
 Each source has an explicit base URL, plugin ID, enabled flag, polling/freshness
 limits, configuration, and verified external-ID mappings. Credentials are references
@@ -99,6 +100,36 @@ polling does not make old reports new. The generic `evidence_max_age_seconds` va
 horizon is separate from the source's collection freshness, and both must be current.
 The client bounds the crawl to 30 days/2,000 rows, selects latest report per external
 site, and rejects unsafe continuation URLs. See [the API notes](ODK_Central_API_Notes.md).
+
+Local API verification used Central `v2026.2.0`, upstream commit
+`ee0e4207ab6fb628247f4d5b5b576325782a5a05`, backend commit
+`bee93414a2215bd73d7f371113c6640c66d90c95`, and PostgreSQL 14.23.
+The locally built backend image ID was
+`sha256:06a3c80388747b69ef961bfcaa0de78f93ff0a377f5b0b602de5abeb2a90108e`;
+this is platform/build-specific evidence, not a portable published image digest.
+Two actual-client tests covered 51 submissions/two same-origin OData pages,
+Project Viewer access and rejected form changes, upstream approved-field selection,
+numeric projection, incorrect credentials and mappings, explicit fault/recovery
+reports, missing answers, stale report validity, and event versus receipt timestamps.
+Only fixture setup creates users, forms and submissions; collectors remain read-only.
+
+The bundled [community inspection form](../config/odk/hubos-inspection.xml) passed
+ODK Validate 1.20.0, whose bundled JAR SHA-256 was
+`92756ea4aed195355a07e5572f025f0921a31282387a870ae63e1f5cdf37e0c3`.
+The form SHA-256 was `f05b6a6732150aa908643a39f786196571bce112ddd7b5482ca7cda65130ddb6`.
+The integration test extends only its disposable copy with a sentinel private field
+to prove that the approved selection excludes it; the distributed form has no such
+personal/free-text field. The API-only fixture disables Enketo and external telemetry,
+uses an internal network and Mailpit-only email, and bypasses the legacy PG9.6 upgrade
+wait for its fresh PG14 database. It does **not** verify Central's web UI, Enketo forms,
+remote TLS deployment, ODK Collect operation or the user's existing Central project.
+
+For a disposable local run, prepare pinned upstream sources with
+`scripts/vendor-ecosystem.sh`, start `compose/odk-test.compose.yaml` using project
+`hubos-v02-odk-test`, then run `bun scripts/test-odk.js`. The runner checks the fixture's
+nonsecret addressing/mail/reporting configuration and uses the upstream CLI for a
+unique fictional administrator. Repeat runs create new uniquely named test projects
+and readers; no existing account is reset. Cleanup only this named fixture.
 
 ## Transport and privacy
 

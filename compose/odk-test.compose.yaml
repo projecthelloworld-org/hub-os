@@ -1,0 +1,113 @@
+# Disposable API-only integration fixture. Never use production credentials here.
+# Central's own service, database, secrets and migration entrypoints are retained.
+services:
+  postgres14:
+    build:
+      context: ../vendor/odk-central
+      dockerfile: postgres14.dockerfile
+    # Fresh PG14 only: bypass upstream's legacy PG9.6 upgrade-marker wait.
+    # Retain the parent PostgreSQL image's normal initialization entrypoint.
+    entrypoint: [docker-entrypoint.sh]
+    command: [postgres]
+    environment:
+      POSTGRES_USER: odk
+      POSTGRES_PASSWORD: fixture-only-odk-database
+      POSTGRES_DB: odk
+    volumes:
+      - postgres14:/var/lib/odk/postgresql/14
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U odk -d odk']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  secrets:
+    build:
+      context: ../vendor/odk-central
+      dockerfile: secrets.dockerfile
+    command: ['./generate-secrets.sh']
+    volumes:
+      - secrets:/etc/secrets
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+  service:
+    build:
+      context: ../vendor/odk-central
+      dockerfile: service.dockerfile
+    command: ['./start-odk.sh']
+    depends_on:
+      postgres14:
+        condition: service_healthy
+      secrets:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    volumes:
+      - secrets:/etc/secrets:ro
+    environment:
+      DOMAIN: service
+      HTTPS_PORT: '443'
+      SYSADMIN_EMAIL: fixture-admin@example.invalid
+      PGHOST: postgres14
+      PGUSER: odk
+      PGPASSWORD: fixture-only-odk-database
+      PGDATABASE: odk
+      DB_SSL: 'null'
+      DB_POOL_SIZE: '5'
+      EMAIL_FROM: no-reply@example.invalid
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: '1025'
+      EMAIL_SECURE: 'false'
+      EMAIL_IGNORE_TLS: 'true'
+      EMAIL_USER: ''
+      EMAIL_PASSWORD: ''
+      OIDC_ENABLED: 'false'
+      OIDC_ISSUER_URL: ''
+      OIDC_CLIENT_ID: ''
+      OIDC_CLIENT_SECRET: ''
+      SENTRY_ORG_SUBDOMAIN: ''
+      SENTRY_KEY: ''
+      SENTRY_PROJECT: ''
+      SENTRY_TRACE_RATE: '0'
+      S3_SERVER: ''
+      S3_ACCESS_KEY: ''
+      S3_SECRET_KEY: ''
+      S3_BUCKET_NAME: ''
+      SESSION_LIFETIME: '86400'
+      NODE_OPTIONS: --max-old-space-size=256
+      NODE_CONFIG: >-
+        {"default":{"env":{"domain":"http://service:8383"},"enketo":{"url":"","apiKey":""},"external":{"sentry":{"key":"","project":"","orgSubdomain":"","traceRate":0},"analytics":{"url":"","formId":"","version":""},"mailingListOptIn":{"url":"","formId":"","version":""}}}}
+    healthcheck:
+      # Central may require authentication even for an empty project list.
+      # A real 401 response proves startup completed; API tests verify access.
+      test: [CMD, node, -e, 'fetch("http://localhost:8383/v1/projects").then(r=>process.exit(r.ok||r.status===401?0:1)).catch(()=>process.exit(1))']
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+  client:
+    profiles: [test]
+    image: oven/bun:1.3.14-alpine
+    working_dir: /app
+    volumes:
+      - ../services/hubos:/app:ro
+      - ../config/odk:/forms:ro
+    environment:
+      HUBOS_TEST_ODK_URL: http://service:8383/
+      HUBOS_TEST_ODK_OWNED_FIXTURE: hubos-v02-odk-test
+      HUBOS_TEST_ODK_ADMIN_EMAIL: ${HUBOS_TEST_ODK_ADMIN_EMAIL:-}
+      HUBOS_TEST_ODK_ADMIN_PASSWORD: ${HUBOS_TEST_ODK_ADMIN_PASSWORD:-}
+    command: [bun, test, test/odk.integration.test.js]
+  validator:
+    profiles: [validation]
+    image: ghcr.io/getodk/pyxform-http:v4.5.0@sha256:8f08364c2d1f880c1d93dd255377858bcc14209e1c767b70f980b29891f66cfb
+    entrypoint: [java, '-Djava.awt.headless=true', -jar, /app/.venv/lib/python3.12/site-packages/pyxform/validators/odk_validate/bin/ODK_Validate.jar]
+    command: [/forms/hubos-inspection.xml, --fail-fast]
+    network_mode: none
+    volumes:
+      - ../config/odk:/forms:ro
+networks:
+  default:
+    internal: true
+volumes:
+  postgres14:
+  secrets:

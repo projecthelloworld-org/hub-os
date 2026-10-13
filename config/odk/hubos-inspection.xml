@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<h:html xmlns="http://www.w3.org/2002/xforms"
+        xmlns:h="http://www.w3.org/1999/xhtml"
+        xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <h:title>HubOS community-site inspection</h:title>
+    <model>
+      <instance>
+        <data id="hubos-inspection" version="2026101301">
+          <site_code/>
+          <reported_at/>
+          <fault_count/>
+          <usable_devices/>
+          <connectivity_available/>
+          <power_available/>
+          <meta><instanceID/></meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/site_code" type="string" required="true()"/>
+      <bind nodeset="/data/reported_at" type="dateTime" required="true()"/>
+      <bind nodeset="/data/fault_count" type="int" required="true()" constraint=". &gt;= 0 and . &lt;= 1000"/>
+      <bind nodeset="/data/usable_devices" type="int" constraint=". &gt;= 0 and . &lt;= 1000000"/>
+      <bind nodeset="/data/connectivity_available" type="int"/>
+      <bind nodeset="/data/power_available" type="int"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" calculate="concat('uuid:', uuid())"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/site_code"><label>Community site code (no personal identifiers)</label></input>
+    <input ref="/data/reported_at"><label>Inspection date and time</label></input>
+    <input ref="/data/fault_count"><label>Number of operational faults currently observed</label></input>
+    <input ref="/data/usable_devices"><label>Usable shared devices (leave blank if not checked)</label></input>
+    <select1 ref="/data/connectivity_available">
+      <label>Internet available during this inspection? Leave blank if not checked.</label>
+      <item><label>Yes</label><value>1</value></item>
+      <item><label>No</label><value>0</value></item>
+    </select1>
+    <select1 ref="/data/power_available">
+      <label>Power available during this inspection? Leave blank if not checked.</label>
+      <item><label>Yes</label><value>1</value></item>
+      <item><label>No</label><value>0</value></item>
+    </select1>
+  </h:body>
+</h:html>

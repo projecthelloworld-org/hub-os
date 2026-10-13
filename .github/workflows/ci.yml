@@ -97,6 +97,29 @@ jobs:
         working-directory: .
         run: docker compose -p hubos-ci-headwind-test -f compose/headwind-test.compose.yaml down --volumes
 
+  odk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+        working-directory: services/hubos
+      - name: Prepare pinned upstream ODK sources
+        run: |
+          sh scripts/vendor-ecosystem.sh
+          test "$(git -C vendor/odk-central rev-parse HEAD)" = ee0e4207ab6fb628247f4d5b5b576325782a5a05
+          test "$(git -C vendor/odk-central/server rev-parse HEAD)" = bee93414a2215bd73d7f371113c6640c66d90c95
+      - name: Start isolated API-only Central fixture
+        run: docker compose -p hubos-v02-odk-test -f compose/odk-test.compose.yaml up -d --build --wait --wait-timeout 300 service
+      - name: Validate form and verify actual read-only OData client
+        run: bun scripts/test-odk.js
+      - name: Clean only the disposable ODK fixture
+        if: always()
+        run: docker compose -p hubos-v02-odk-test -f compose/odk-test.compose.yaml down --volumes
+
   sbom:
     runs-on: ubuntu-latest
     permissions:

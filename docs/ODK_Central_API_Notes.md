@@ -112,3 +112,118 @@ Use a uniquely identified test project and never overwrite a pre-existing form/a
 ## Failure and release-test checklist
 
 Cover wrong credentials, expired/revoked session, 403 project/form rights, missing/unpublished form, malformed JSON/XML, unknown selected fields, unavailable encrypted values, unsupported query options, repeated/cross-origin continuation, timeout/cancellation/rate-limit fixtures, unmapped site IDs, numeric zero versus missing answer, fresh polling with old evidence, stale polling with a still-valid report, report correction/recovery, and PII sentinel redaction. Central errors use HTTP status plus problem `code`/`message`/optional `details`; messages/details can echo inputs, so persist only HubOS's bounded diagnostic code. No fixed local rate quota is established by the inspected API: use normal scheduler backoff and bounded `Retry-After` handling rather than inventing one. [Problem definitions](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/util/problem.js)
+
+## Reproducible local fixture: addressing, administration and egress
+
+This section is a source-derived setup recommendation, **not** evidence that the fixture has already passed. Use a new uniquely named Compose project and fresh isolated volumes. Do not reuse, restart, reconfigure or remove the user's existing `dep-odk-test` project.
+
+### How OData continuation URLs are derived
+
+The OData handler passes **`config.default.env.domain`** to the formatter. The JSON footer builds `@odata.context` and `@odata.nextLink` by concatenating that configured domain with the service path/continuation URL. It does not infer the public origin from the request's Host header, socket port or `X-Forwarded-Proto`. [OData handler](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/resources/odata.js), [literal footer construction](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/util/odata.js)
+
+The production Compose startup script renders its `config/local.json` using:
+
+```text
+BASE_URL = https://DOMAIN               when HTTPS_PORT is exactly 443
+BASE_URL = https://DOMAIN:HTTPS_PORT    otherwise
+```
+
+`DOMAIN` should be a hostname, without a scheme or embedded port. `HTTPS_PORT` is the **host-facing published port**, while nginx listens on container port 443. The scheme is always HTTPS, independent of `SSL_TYPE`. `SSL_TYPE=upstream` changes nginx to listen on HTTP port 80, removes its redirect listener and forces `X-Forwarded-Proto: https`, because it expects an external TLS terminator. It does **not** turn Central's generated domain into HTTP. Thus simply publishing `service:8383` on a host HTTP port produces incorrect HTTPS continuation links unless the configured domain is also overridden. [Service startup](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/files/service/scripts/start-odk.sh), [configuration template](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/files/service/config.json.template), [Compose port mapping](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/docker-compose.yml), [nginx upstream mode](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/files/nginx/setup-odk.sh)
+
+The backend itself supports an isolated plain-HTTP fixture: its upstream default configuration uses HTTP `http://localhost:8989` as the public domain and server port 8383. A test can publish the backend on a private host address such as `127.0.0.1:18383` **and explicitly override** `default.env.domain` to `http://127.0.0.1:18383`. This does not require a TLS proxy for session-bearer/OData client tests. It is not suitable for remote production exposure, Basic authentication, or proving a complete Central web deployment. [Backend defaults](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/config/default.json), [HTTP listener](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/bin/run-server.js)
+
+A fixture-only `NODE_CONFIG` JSON override can set that domain while retaining the upstream service image and normal migration startup. `node-config` supports JSON environment overrides; validate the effective nonsecret `default.env.domain` in the started service rather than assuming an environment variable was consumed. The override must also be present for administrative CLI processes, and must not override the already configured database credentials by accident. [node-config environment contract](https://github.com/node-config/node-config/wiki/Environment-Variables#node_config), [pinned dependency](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/package-lock.json)
+
+Alternatively use upstream nginx with **customssl** and a test CA/certificate trusted only by the fixture client, or upstream SSL mode behind a local TLS terminator, with the exact reachable hostname and `HTTPS_PORT`. Do not disable global certificate verification. The selfsign helper creates a CN=localhost certificate without an explicit SAN in its command; do not assume every strict TLS client accepts it. Keep all HTTP/HTTPS fixture bindings on loopback. HTTP redirect behavior is not a reliable way to discover the configured HTTPS port: the pinned redirect template constructs `https://$http_host$request_uri`, which can retain the incoming HTTP port. Use the explicitly configured canonical endpoint. [Certificate/SSL modes](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/files/nginx/setup-odk.sh), [redirect template](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/files/nginx/redirector.conf)
+
+### Initial administrator through the upstream CLI
+
+After the isolated service has completed migrations, create a **unique fixture** Web User and promote it with the packaged upstream wrapper:
+
+```text
+docker compose -p <owned-fixture-project> exec -T service odk-cmd --email <fixture-email> user-create
+docker compose -p <owned-fixture-project> exec -T service odk-cmd --email <fixture-email> user-promote
+```
+
+Include the fixture's explicit Compose files/path in the runner so these commands cannot resolve another project's service. `user-create` in this pinned version has **no password flag**: it always invokes the `prompt` library for hidden password input when OIDC is disabled. An automated fixture runner can supply one password line through the child process's standard input with `exec -T`; this avoids browser interaction and avoids putting the password in command arguments, shell history or public output. Use a bounded process timeout and do not print captured input/output indiscriminately. This stdin path still needs local verification; do not invent an unsupported `--password` option. `user-promote` accepts the email and grants the system-wide `admin` assignment. Use only on the owned disposable account, never on an existing production identity. [Packaged wrapper](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/files/service/odk-cmd), [CLI argument and prompt handling](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/bin/cli.js), [account tasks](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/task/account.js)
+
+The CLI create-user task stores the account/password directly and **does not send a claim email**, unlike `POST /v1/users`. It emits its task result to stdout; retain only a safe success/ID summary. Log in using the chosen fixture credentials, not credentials extracted from a browser or container's existing accounts. On repeat tests, verify and reuse the fixture account only within the matching owned project; do not silently reset an arbitrary account's password.
+
+### Suppress external email, error telemetry and usage reporting
+
+Upstream production Compose starts a real Exim mail relay by default, and configures a default Sentry destination. Empty `.env` Sentry values are **not enough**: expressions such as `${SENTRY_KEY:-<default>}` substitute the default when the variable is empty. The fixture must use an explicit service/config override with an empty Sentry key, rather than accidentally retaining those defaults. [Production defaults](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/docker-compose.yml)
+
+For the API-only HTTP fixture, the following nonsecret configuration illustrates the required overrides (replace the port/host only with the fixture's actual private endpoint):
+
+```json
+{
+  "default": {
+    "env": {"domain": "http://127.0.0.1:18383"},
+    "external": {
+      "sentry": {"key": "", "project": "", "orgSubdomain": "", "traceRate": 0},
+      "analytics": {"url": "", "formId": "", "version": ""},
+      "mailingListOptIn": {"url": "", "formId": "", "version": ""}
+    },
+    "email": {
+      "serviceAccount": "no-reply@example.invalid",
+      "transport": "smtp",
+      "transportOpts": {
+        "host": "mailpit", "port": 1025, "secure": false, "ignoreTLS": true,
+        "auth": {"user": "", "pass": ""}
+      }
+    }
+  }
+}
+```
+
+Use a **local Mailpit service** with no outbound relay and no production recipients; do not start or route to upstream Exim for this fixture. For completely disabled delivery, the upstream `email.transport: "json"` makes no SMTP requests, but it prints complete message bodies—including account links/tokens—to the server log. Mailpit plus strict output redaction is preferable for exercising user-creation emails. Neither option permits importing production addresses. [Mail transports](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/external/mail.js)
+
+Sentry's initializer returns a non-network stub when any of key/project/orgSubdomain is missing or empty; setting only the sampling rate to zero does not disable exception reporting. The stub still writes diagnostic details locally, so avoid intentionally sending secret-bearing invalid inputs and don't expose raw upstream logs as HubOS output. If the frontend is included or inspected, also keep `SENTRY_DSN_FRONTEND` explicitly empty; server `NODE_CONFIG` does not govern frontend telemetry. [Sentry disable guard](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/external/sentry.js), [frontend configuration](https://github.com/getodk/central/blob/ee0e4207ab6fb628247f4d5b5b576325782a5a05/files/nginx/client-config.json.template)
+
+With the fixture administrator, explicitly `POST /v1/config/analytics` with `{ "enabled": false }` and verify `GET /v1/config/analytics` has `value.enabled === false`. The scheduled usage-report task reads that state before sending; the blank reporter URL/form/version override is an additional no-network guard even if the setting is accidentally absent. Do not opt into mailing-list reporting. Perform these configuration writes only on the owned fixture, not from the collector. [Config endpoint](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/resources/config.js), [analytics state](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/model/frames/config.js), [usage-report guard](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/task/analytics.js), [reporter no-op guard](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/external/odk-reporter.js)
+
+### Recommended fixture boundaries and acceptance
+
+Reuse pinned **upstream components**, but place them in a distinct test project: fresh PostgreSQL, the upstream backend service image, optional upstream Enketo/Redis and pyxform as needed, plus local Mailpit. Publish only the backend's private port for collector tests. Retain the normal upstream migration startup rather than building a fake ODK API. Prebuild/pull dependencies before any optional runtime egress isolation; disable/restrict external destinations during the actual test run.
+
+An API-only fixture can exercise XML form creation, actual submissions, session authentication and OData without proving Enketo web-form availability. Form creation/publishing attempts bounded Enketo synchronization and schedules retries on failure. If Enketo is included, Central's configured public domain must also be reachable **from its container**, not merely from the host test client; `127.0.0.1` is container-local there. Do not claim a fully working web deployment from successful collector tests alone. [Bounded Enketo sync](https://github.com/getodk/central-backend/blob/bee93414a2215bd73d7f371113c6640c66d90c95/lib/model/query/forms.js)
+
+Before accepting the fixture, require: migration completion; successful unique admin creation/promotion; recorded effective canonical domain; disabled Sentry/analytics; Mailpit-only or no-network mail; a separate viewer credential; at least two OData pages with same-origin continuations and approved-field preservation; rejected viewer management writes; correct reported/server/poll timestamps; and recorded upstream commits/image identities. Stop/cleanup only resources bearing this test project's identity, preserving the user-existing ODK project and all optional production volumes.
+
+## Validate the existing inspection XML with the bundled upstream validator
+
+**Source-derived recipe; not executed by this research task.** Validate `config/odk/hubos-inspection.xml` directly, before relying on Central's upload acceptance. The upstream `ghcr.io/getodk/pyxform-http:v4.5.0` recipe, commit `1cdcd4abbd6e360d25bfa16c3c58ad9450d5c753`, installs Python 3.12, a virtual environment under `/app/.venv`, **pyxform 4.5.0**, and `openjdk8-jre-base`. Its HTTP `/api/v1/convert` route accepts spreadsheet bytes and performs conversion; it is **not** an XML validation endpoint. Do not POST an existing XML form to it as if it were one. [Pinned container recipe](https://github.com/getodk/pyxform-http/blob/1cdcd4abbd6e360d25bfa16c3c58ad9450d5c753/Dockerfile), [pinned Python dependency](https://github.com/getodk/pyxform-http/blob/1cdcd4abbd6e360d25bfa16c3c58ad9450d5c753/pyproject.toml), [HTTP conversion implementation](https://github.com/getodk/pyxform-http/blob/1cdcd4abbd6e360d25bfa16c3c58ad9450d5c753/app/main.py)
+
+The packaged validator's expected location in that image is:
+
+```text
+/app/.venv/lib/python3.12/site-packages/pyxform/validators/odk_validate/bin/ODK_Validate.jar
+```
+
+pyxform's actual invocation is `java -Djava.awt.headless=true -jar <jar> <xform-path>`. The bundled JAR is a dependency-inclusive executable archive whose manifest specifies **`org.opendatakit.validate.FormValidator`** as its main class; there is no additional classpath to construct. Equivalent explicit-class syntax is `java -Djava.awt.headless=true -cp <jar> org.opendatakit.validate.FormValidator <xform-path>`. Supply an XML path: starting without a path selects the GUI instead. [pyxform invocation and package-relative JAR path](https://github.com/XLSForm/pyxform/blob/51e5bfecc306febe03b3c4791ad0dbdecad208a4/pyxform/validators/odk_validate/__init__.py), [JAR assembly/main class](https://github.com/getodk/validate/blob/9d95e1893473f13c18e8e5fc824fbdf79cc7e2c0/build.gradle)
+
+A future verification runner may execute this **disposable one-shot** command, without starting or changing any existing Central service:
+
+```bash
+docker run --rm --network none \
+  --mount type=bind,source=/Users/naxic/Documents/Codex/hubos/config/odk/hubos-inspection.xml,target=/fixtures/hubos-inspection.xml,readonly \
+  --entrypoint java \
+  ghcr.io/getodk/pyxform-http:v4.5.0 \
+  -Djava.awt.headless=true \
+  -jar /app/.venv/lib/python3.12/site-packages/pyxform/validators/odk_validate/bin/ODK_Validate.jar \
+  /fixtures/hubos-inspection.xml --fail-fast
+```
+
+The repository path shown is the current workspace; use an independently verified absolute path in other environments. Mount it read-only and disable container networking, since this standalone bundled form needs no external attachments or network access. Pre-pull/build the image before the offline run. Record the image digest and form checksum. Before treating this as a release gate, confirm the actual container has the expected JAR and version rather than relying only on its mutable tag/path derivation.
+
+The pyxform 4.5.0 source bundle's `installed.json` identifies **ODK Validate v1.20.0**. Its recorded release-asset SHA-256 is `92756ea4aed195355a07e5572f025f0921a31282387a870ae63e1f5cdf37e0c3`; hashing the JAR in the pinned source checkout produced that same value. Confirm the image's bundled JAR independently against it. This is a validator-artifact check, not a claim that the inspection form has passed. [Bundled version/digest metadata](https://github.com/XLSForm/pyxform/blob/51e5bfecc306febe03b3c4791ad0dbdecad208a4/pyxform/validators/odk_validate/bin/installed.json), [official Validate release](https://github.com/getodk/validate/releases/tag/v1.20.0)
+
+Exit semantics from the pinned Java CLI:
+
+- **0:** the validator considers the supplied forms valid; capture and review warnings from stdout/stderr rather than requiring completely empty output.
+- **1:** one or more supplied forms failed; `--fail-fast`/`--failFast` stops after the first invalid form. A missing/unreadable path is also a failure, not a skipped test.
+- **Any other nonzero exit, timeout, signal termination, missing JAR/Java, or missing validation-start evidence:** infrastructure/validation failure; do not pass the gate. Use an explicit bounded runner deadline and cancel only this owned validation process/container if necessary.
+
+The Java implementation prints `Validating: <path>` before reading the form and explicitly exits 1 on invalid results. Verify that marker and preserve sanitized diagnostics alongside the exit code. The Python `check_xform()` wrapper is not sufficient as an exit-code-only release gate: it returns a warning list for a 100-second timeout or negative return code rather than necessarily raising an exception. A direct Java invocation with fail-closed deadline handling avoids accepting that timeout as success. [Java argument/result handling](https://github.com/getodk/validate/blob/9d95e1893473f13c18e8e5fc824fbdf79cc7e2c0/src/org/opendatakit/validate/FormValidator.java), [Python timeout handling](https://github.com/XLSForm/pyxform/blob/51e5bfecc306febe03b3c4791ad0dbdecad208a4/pyxform/validators/odk_validate/__init__.py)
+
+This validates XML/XForms semantics supported by that JavaRosa/Validate version. It does not replace actual ODK submission/OData tests, privacy checks, permission checks, or verification of the form in the chosen data-collection client.
