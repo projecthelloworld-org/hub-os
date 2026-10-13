@@ -26,6 +26,8 @@ In the 64.1 source, `http-channel-host-strategy` is a deprecated alias for `http
 
 Metabase's API is unversioned and may change. Use the deployed instance's `/api/docs` and the [API changelog](https://www.metabase.com/docs/latest/developers-guide/api-changelog) when updating the HubOS adapter; see the [API compatibility notice](https://www.metabase.com/docs/latest/api).
 
+Direct saved-question queries in 64.1 require each supplied filter parameter to include a nonblank `id`, alongside its type, target and value. Use the saved question's template-tag ID, not an unrelated dashboard parameter ID. HubOS declares stable tag IDs for its provisioned questions. See the [card-query endpoint](https://github.com/metabase/metabase/blob/v0.64.1.7/src/metabase/queries_rest/api/card.clj) and [official template-tag parameter mapping](https://github.com/metabase/metabase/blob/v0.64.1.7/frontend/src/metabase-lib/v1/parameters/utils/template-tags.ts).
+
 The 64.1 HTTP-channel schema accepts `type: "channel/http"`, a nonblank name, optional description/active values, and these details:
 
 ```json

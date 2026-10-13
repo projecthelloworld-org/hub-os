@@ -4,8 +4,6 @@ import { readdir } from 'node:fs/promises';
 import { PostgresStore } from '../src/store/postgres.js';
 import { buildDemoState } from '../src/demo/data.js';
 import { randomId, stableId } from '../src/ids.js';
-import { createApp } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
 import { bootstrapMetabase, loadMetabaseBootstrapConfig } from '../src/metabase/bootstrap.js';
 import { provisionMetabaseMonitoring } from '../src/metabase/provision.js';
 import { createMetabaseClient } from '../src/metabase/client.js';
@@ -35,9 +33,16 @@ suite('Metabase release compatibility', () => {
 });
 
 suite('Native Metabase dashboards, filters and alert routing (disposable fixture)', () => {
-  let admin, store, server, env, client, first, roleName, databaseName, originalAccountId, sessionId;
+  let admin, store, receiverName, env, client, first, roleName, databaseName, originalAccountId, sessionId;
   const webhookKey = 'fixture-only-metabase-webhook';
-  const callbacks = [];
+  const project = process.env.HUBOS_TEST_METABASE_PROJECT;
+  const fixtureCommand = async (args) => {
+    if (!['hubos-ci-metabase-test', 'hubos-v02-metabase-test'].includes(project)) throw new Error('Owned fixture project required');
+    const child = Bun.spawn(['docker', ...args], { cwd: import.meta.dir + '/..', stdout: 'ignore', stderr: 'ignore' });
+    const timer = setTimeout(() => child.kill(), 15000);
+    try { if (await child.exited !== 0) throw new Error('METABASE_FIXTURE_CALLBACK_TRANSPORT_FAILED'); }
+    finally { clearTimeout(timer); }
+  };
   beforeAll(async () => {
     const base = new URL(databaseUrl);
     if (base.pathname !== '/hubos_test' || !['127.0.0.1', 'localhost'].includes(base.hostname)
@@ -56,19 +61,6 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
       await store.db.unsafe((await Bun.file(new URL(file, directory)).text()).split('-- migrate:down')[0]);
     }
     await store.seedDemo(buildDemoState(new Date()));
-    const receiver = createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), resolveSecrets: async () => ({ webhookKey }) });
-    const callbackHost = process.env.HUBOS_TEST_CALLBACK_HOST ?? 'host.docker.internal';
-    if (callbackHost !== 'host.docker.internal' && !/^172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(callbackHost)) {
-      throw new Error('Private fixture bridge callback required');
-    }
-    server = Bun.serve({ hostname: process.env.HUBOS_TEST_CALLBACK_BIND ?? '127.0.0.1', port: 13024,
-      fetch: async (request) => {
-        const received = { path: new URL(request.url).pathname, status: null };
-        callbacks.push(received);
-        const response = await receiver(request);
-        received.status = response.status;
-        return response;
-      } });
     env = {
       HUBOS_DATABASE_URL: base.href, HUBOS_DEMO_MODE: 'true', METABASE_URL: metabaseUrl,
       METABASE_ADMIN_EMAIL: 'fixture-admin@local.test', METABASE_ADMIN_PASSWORD: 'Fixture-Metabase-Password-2026!',
@@ -76,18 +68,23 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
       METABASE_HUBOS_DB_HOST: 'db', METABASE_HUBOS_DB_PORT: '5432',
       METABASE_HUBOS_DB_NAME: databaseName, METABASE_HUBOS_DB_USER: roleName,
       METABASE_HUBOS_DB_PASSWORD: 'Fixture-Reporting-Password-2026!', METABASE_WEBHOOK_KEY: webhookKey,
-      HUBOS_INTERNAL_URL: `http://${callbackHost}:${server.port}`,
+      HUBOS_INTERNAL_URL: 'http://receiver:3000',
       // Manual native sends exercise the same routing without timing-dependent scheduled sends.
       METABASE_ALERT_CRON: '0 0 0 1 1 ?',
     };
-    const project = process.env.HUBOS_TEST_METABASE_PROJECT;
-    if (project) {
-      if (!['hubos-ci-metabase-test', 'hubos-v02-metabase-test'].includes(project)) throw new Error('Owned fixture project required');
-      const probe = Bun.spawn(['docker', 'compose', '-p', project, '-f', '../../compose/metabase-test.compose.yaml',
-        'exec', '-T', 'metabase', 'curl', '--fail', '--silent', '--max-time', '5', `${env.HUBOS_INTERNAL_URL}/healthz`],
-      { stdout: 'ignore', stderr: 'ignore' });
-      if (await probe.exited !== 0) throw new Error('METABASE_FIXTURE_CALLBACK_TRANSPORT_FAILED');
-    }
+    receiverName = `${project}-receiver-${suffix}`;
+    const receiverDatabase = new URL(base.href);
+    receiverDatabase.hostname = 'db'; receiverDatabase.port = '5432';
+    await fixtureCommand(['compose', '-p', project, '-f', '../../compose/metabase-test.compose.yaml',
+      'run', '--rm', '-d', '--use-aliases', '--name', receiverName,
+      '-e', `HUBOS_DATABASE_URL=${receiverDatabase.href}`, '-e', `METABASE_WEBHOOK_KEY=${webhookKey}`, 'receiver']);
+    await waitFor(async () => {
+      try {
+        await fixtureCommand(['compose', '-p', project, '-f', '../../compose/metabase-test.compose.yaml',
+          'exec', '-T', 'metabase', 'curl', '--fail', '--silent', '--max-time', '5', `${env.HUBOS_INTERNAL_URL}/healthz`]);
+        return true;
+      } catch { return false; }
+    }, 30000);
     // Simulate the v0.1 tool account/database connection, then upgrade it in place.
     const legacy = loadMetabaseBootstrapConfig({ ...env, METABASE_HUBOS_DB_USER: base.username,
       METABASE_HUBOS_DB_PASSWORD: decodeURIComponent(base.password), METABASE_HUBOS_SCHEMAS: 'public,analytics' });
@@ -106,7 +103,8 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     // Remove only this fixture datasource before dropping this test's random database/role.
     const database = store && (await store.db`SELECT external_id FROM managed_tool_resources WHERE tool = 'metabase' AND kind = 'database'`)[0];
     if (client && database) await client(`/api/database/${database.external_id}`, { method: 'DELETE' });
-    await server?.stop(); await store?.close();
+    if (receiverName) await fixtureCommand(['stop', '--time', '5', receiverName]);
+    await store?.close();
     if (databaseName && admin) await admin.unsafe(`DROP DATABASE ${databaseName} WITH (FORCE)`);
     if (roleName && admin && (await admin`SELECT 1 FROM pg_roles WHERE rolname = ${roleName}`).length) await admin.unsafe(`DROP ROLE ${roleName}`);
     await admin?.close();
@@ -204,7 +202,7 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     try {
       await waitFor(async () => (await store.db`SELECT id FROM incidents WHERE rule_id = 'field-fault' AND site_id = ${site.id}`).length === 1);
     } catch (error) {
-      throw new Error(`Native Metabase opening failed: callbacks=${JSON.stringify(callbacks)}; ${error.message}`);
+      throw new Error(`Native Metabase opening failed: no accepted source webhook; ${error.message}`);
     }
     const [incident] = await store.db`SELECT id FROM incidents WHERE rule_id = 'field-fault' AND site_id = ${site.id}`;
     await sendNative('field-fault-active');

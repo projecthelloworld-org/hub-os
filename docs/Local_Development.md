@@ -80,11 +80,14 @@ Fixtures use explicit project names, guarded endpoints, isolated volumes and pub
 - `compose/test.compose.yaml`: PostgreSQL migrations, mappings, jobs, reporting permissions, incidents and upgrade preservation.
 - `compose/kuma-test.compose.yaml`: real pinned Kuma provisioning, metrics, outage/recovery hooks and Mailpit.
 - `compose/metabase-test.compose.yaml`: native dashboard queries, filters, account/resource preservation and alert delivery.
+- `compose/metabase-upgrade-test.compose.yaml`: actual Metabase application-database migrations, retained encrypted connections and preservation of operator-owned resources. It starts a legacy image on loopback only; never use this fixture for deployment.
 - `compose/headwind-test.compose.yaml`: Community inventory, check-in clocks and reader permissions.
 - `compose/odk-test.compose.yaml`: API-only Central, approved OData, reader permissions and upstream form validation.
 - `compose/access-test.compose.yaml`: actual HubOS API behind authenticated Caddy.
 
 The [CI workflow](../.github/workflows/ci.yml) is the reproducible command reference. Keep test fixtures and credentials inside test tooling; user guides should explain supported operation, not recount individual runs.
+
+The native Metabase suite starts an ephemeral HubOS receiver on its own private Compose network. Set `HUBOS_TEST_METABASE_PROJECT` to the guarded fixture project name. This exercises the same private webhook destination as an installation without relying on host-gateway aliases or weakening Metabase's network policy.
 
 The ODK runner is `bun scripts/test-odk.js` after starting its named fixture. It creates only fictional accounts/projects and verifies internal addressing, disabled external reporting and Mailpit-only email. Its API checks do not test Central's web UI or ODK Collect.
 

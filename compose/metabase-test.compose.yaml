@@ -28,8 +28,6 @@ services:
       JAVA_TOOL_OPTIONS: -Xmx768m
     ports:
       - "127.0.0.1:13021:3000"
-    extra_hosts:
-      - host.docker.internal:host-gateway
     networks:
       - default
       - fixture-database
@@ -42,6 +40,22 @@ services:
       timeout: 5s
       retries: 60
       start_period: 60s
+  receiver:
+    profiles: [test-receiver]
+    image: oven/bun:1.3.14-alpine
+    working_dir: /app
+    command: [bun, run, src/server.js]
+    volumes:
+      - ../services/hubos:/app:ro
+    environment:
+      HUBOS_ENV: test
+      HUBOS_HOST: 0.0.0.0
+      HUBOS_DEMO_MODE: "true"
+      HUBOS_ADMIN_KEY: fixture-only-admin-key
+      HUBOS_INGEST_KEY: fixture-only-ingest-key
+    networks:
+      - default
+      - fixture-database
 volumes:
   metabase-fixture-db:
 networks:

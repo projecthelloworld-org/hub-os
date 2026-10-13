@@ -105,7 +105,8 @@ suite('Metabase application database upgrade (owned disposable fixture)', () => 
     const connection = await client(`/api/database/${databaseId}`);
     expect(connection.details.user).toBe(roleName);
     expect(connection.name).toBe('Custom existing reporting connection');
-    expect((await client('/api/database')).filter((database) => database.details?.dbname === databaseName)).toHaveLength(1);
+    const inventory = await client('/api/database');
+    expect((Array.isArray(inventory) ? inventory : inventory.data).filter((database) => database.details?.dbname === databaseName)).toHaveLength(1);
     const dashboard = await client(`/api/dashboard/${customDashboard.id}`);
     expect(dashboard.name).toBe(customDashboard.name);
     expect(dashboard.description).toBe('Operator-owned fixture dashboard');
