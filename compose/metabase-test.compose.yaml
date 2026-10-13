@@ -28,6 +28,9 @@ services:
       - "127.0.0.1:13021:3000"
     extra_hosts:
       - host.docker.internal:host-gateway
+    networks:
+      - default
+      - fixture-database
     depends_on:
       metabase-db:
         condition: service_healthy
@@ -39,3 +42,7 @@ services:
       start_period: 60s
 volumes:
   metabase-fixture-db:
+networks:
+  fixture-database:
+    external: true
+    name: ${HUBOS_TEST_DB_NETWORK:-hubos-v02-foundation-test_default}

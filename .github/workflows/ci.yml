@@ -12,6 +12,8 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      HUBOS_TEST_DB_NETWORK: hubos-ci-test_default
     defaults:
       run:
         working-directory: services/hubos

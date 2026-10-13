@@ -50,7 +50,8 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     env = {
       HUBOS_DATABASE_URL: base.href, HUBOS_DEMO_MODE: 'true', METABASE_URL: metabaseUrl,
       METABASE_ADMIN_EMAIL: 'fixture-admin@local.test', METABASE_ADMIN_PASSWORD: 'Fixture-Metabase-Password-2026!',
-      METABASE_HUBOS_DB_HOST: 'host.docker.internal', METABASE_HUBOS_DB_PORT: String(base.port || 5432),
+      // Linux loopback-published ports are intentionally unreachable via the host gateway.
+      METABASE_HUBOS_DB_HOST: 'db', METABASE_HUBOS_DB_PORT: '5432',
       METABASE_HUBOS_DB_NAME: databaseName, METABASE_HUBOS_DB_USER: roleName,
       METABASE_HUBOS_DB_PASSWORD: 'Fixture-Reporting-Password-2026!', METABASE_WEBHOOK_KEY: webhookKey,
       HUBOS_INTERNAL_URL: `http://host.docker.internal:${server.port}`,
