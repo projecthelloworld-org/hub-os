@@ -92,6 +92,24 @@ describe('operational incident signals and delivery', () => {
 });
 
 describe('source-scoped generic webhook lifecycle', () => {
+  test('authenticated empty connection tests are ignored, not healthy evidence', async () => {
+    const { store, source } = await fixture();
+    const app = createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), registry: createConnectorRegistry([kuma]),
+      resolveSecrets: async () => ({ webhookKey: 'fixture-webhook-key' }) });
+    const read = async (path) => (await app(new Request(`http://fixture${path}`))).json();
+    const before = (await read('/api/v1/source-connections')).source_connections.find((item) => item.id === source.id);
+    const incidents = (await read('/api/v1/incidents')).incidents.length;
+    const post = (key) => app(new Request(`http://fixture/api/v1/source-connections/${source.id}/webhook`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-hubos-webhook-key': key }, body: '',
+    }));
+    expect((await post('wrong-key')).status).toBe(401);
+    const accepted = await post('fixture-webhook-key');
+    expect(accepted.status).toBe(202);
+    expect(await accepted.json()).toMatchObject({ accepted: 0, signals: 0, monitor_samples: 0 });
+    const after = (await read('/api/v1/source-connections')).source_connections.find((item) => item.id === source.id);
+    expect(after.last_success_at).toEqual(before.last_success_at);
+    expect((await read('/api/v1/incidents')).incidents).toHaveLength(incidents);
+  });
   test('rejects the ingestion/admin keys, discards vendor text, and deduplicates Kuma messages', async () => {
     const { store, source, monitor } = await fixture();
     const app = createApp({ store, config: loadConfig({ HUBOS_DEMO_MODE: 'true' }), registry: createConnectorRegistry([kuma]),

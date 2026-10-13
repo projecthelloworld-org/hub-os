@@ -14,13 +14,14 @@ export function text(body, contentType, status = 200, headers = {}) {
   });
 }
 
-export async function readJson(request) {
+export async function readJson(request, { allowEmpty = false } = {}) {
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     throw Object.assign(new Error("Content-Type must be application/json"), { status: 415 });
   }
   try {
-    return await request.json();
+    const body = await request.text();
+    return allowEmpty && !body.trim() ? {} : JSON.parse(body);
   } catch {
     throw Object.assign(new Error("Request body must contain valid JSON"), { status: 400 });
   }

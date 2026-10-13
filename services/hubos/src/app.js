@@ -125,7 +125,7 @@ export function createApp({ store, config, resolveSecrets = resolveCredentials, 
         if (target.source.is_demo && !config.demoMode) throw Object.assign(new Error('Demonstration source disabled'), { status: 403 });
         const connector = registry.getConnector(target.source.plugin_id);
         if (!connector?.webhook) throw Object.assign(new Error('Source has no webhook lifecycle'), { status: 422 });
-        const normalized = await connector.webhook(await readJson(request), { ...target, config: target.source.config,
+        const normalized = await connector.webhook(await readJson(request, { allowEmpty: true }), { ...target, config: target.source.config,
           credentials, observedAt: new Date() });
         const result = await persistConnectorResult({ store, target, connector, normalized });
         if (result.accepted || result.monitor_samples || result.signals) await store.markSourceCollected(target.source.id, new Date());
