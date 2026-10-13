@@ -28,7 +28,7 @@ For a guided server installation, run the interactive installer from a release c
 ./install.sh
 ```
 
-Once the tagged release assets and website endpoint are live, the equivalent hosted command is:
+The hosted installer is live at [hubos.myhellohub.org](https://hubos.myhellohub.org). Install the latest stable release with:
 
 ```sh
 curl -fsSL https://hubos.myhellohub.org/install.sh | bash

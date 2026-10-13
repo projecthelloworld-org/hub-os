@@ -29,13 +29,13 @@ The ecosystem profile needs `git` and considerably more memory, storage, and sta
 
 ## Hosted one-command installation
 
-The public installation command is:
+The public installer is live on GitHub Pages with a valid certificate and HTTPS enforcement. Install the latest stable release with:
 
 ```sh
 curl -fsSL https://hubos.myhellohub.org/install.sh | bash
 ```
 
-Interactive input is read directly from the terminal, so piping the script does not consume the answers. The hosted installer is published over HTTPS, and its embedded `DEFAULT_RELEASE_URL` and `DEFAULT_RELEASE_SHA256` identify the immutable GitHub release archive. The installer verifies that checksum before extracting the release. A mirror or internally reviewed archive can be supplied explicitly:
+Interactive input is read directly from the terminal, so piping the script does not consume the answers. The hosted installer is published over HTTPS, and its embedded `DEFAULT_RELEASE_URL` and `DEFAULT_RELEASE_SHA256` identify the versioned GitHub release archive. The installer verifies that checksum before extracting the release. A mirror or internally reviewed archive can be supplied explicitly:
 
 ```sh
 curl -fsSL https://hubos.myhellohub.org/install.sh | \
