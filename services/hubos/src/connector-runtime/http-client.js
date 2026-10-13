@@ -8,14 +8,17 @@ export class CollectionError extends Error {
 
 export function createHttpClient({ fetchImpl = fetch, timeoutMs = 15000, maximumBytes = 8 * 1024 * 1024 } = {}) {
   return async function requestJson(url, options = {}) {
-    const parsed = new URL(url);
+    let parsed;
+    try { parsed = new URL(url); }
+    catch { throw new CollectionError('INVALID_SOURCE_URL'); }
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) {
       throw new CollectionError('INVALID_SOURCE_URL');
     }
     const controller = new AbortController();
+    const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetchImpl(parsed, { ...options, redirect: 'error', signal: controller.signal });
+      const response = await fetchImpl(parsed, { ...options, redirect: 'error', signal });
       if (!response.ok) {
         if ([401, 403].includes(response.status)) throw new CollectionError('SOURCE_AUTHENTICATION_FAILED');
         if (response.status === 429) {
@@ -48,7 +51,8 @@ export function createHttpClient({ fetchImpl = fetch, timeoutMs = 15000, maximum
       catch { throw new CollectionError('SOURCE_MALFORMED_RESPONSE'); }
     } catch (error) {
       if (error instanceof CollectionError) throw error;
-      throw new CollectionError(controller.signal.aborted ? 'SOURCE_TIMEOUT' : 'SOURCE_UNREACHABLE');
+      throw new CollectionError(controller.signal.aborted ? 'SOURCE_TIMEOUT'
+        : signal.aborted ? 'COLLECTION_CANCELLED' : 'SOURCE_UNREACHABLE');
     } finally { clearTimeout(timeout); }
   };
 }

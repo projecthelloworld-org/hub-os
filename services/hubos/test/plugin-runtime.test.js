@@ -198,5 +198,10 @@ describe('bounded, redacted upstream client', () => {
       signal.addEventListener('abort', () => reject(new Error('secret')), { once: true });
     }) });
     await expect(timeoutClient('https://fixture.invalid/api')).rejects.toThrow('SOURCE_TIMEOUT');
+    const parent = new AbortController();
+    const cancelled = timeoutClient('https://fixture.invalid/api', { signal: parent.signal });
+    parent.abort();
+    await expect(cancelled).rejects.toThrow('COLLECTION_CANCELLED');
+    await expect(sizeClient('invalid source password')).rejects.toThrow('INVALID_SOURCE_URL');
   });
 });
