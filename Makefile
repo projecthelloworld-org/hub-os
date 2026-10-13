@@ -2,7 +2,7 @@ SHELL := /bin/sh
 BUN_INSTALL_CACHE_DIR ?= $(CURDIR)/.bun-cache
 export BUN_INSTALL_CACHE_DIR
 
-COMPOSE = docker compose -f compose.yaml -f compose/mel.compose.yaml -f compose/development.compose.yaml
+COMPOSE = docker compose -f compose.yaml -f compose/mel.compose.yaml -f compose/monitoring.compose.yaml -f compose/development.compose.yaml
 ECOSYSTEM_COMPOSE = $(COMPOSE) -f compose/ecosystem.compose.yaml
 
 .PHONY: help install installer test check compose-config up down logs seed demo \

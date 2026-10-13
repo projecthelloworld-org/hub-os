@@ -1,0 +1,83 @@
+services:
+  kuma:
+    image: louislam/uptime-kuma:2.5.6@sha256:9912da7d7d9b6ddc0c2d904beb84d24689c1ed9c33b81419eb9008663a92a329
+    environment:
+      UPTIME_KUMA_DB_TYPE: sqlite
+    ports:
+      - "${HUBOS_BIND_ADDRESS:-127.0.0.1}:${KUMA_PORT:-3002}:3001"
+    volumes:
+      - kuma-data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - backend
+      - egress
+      - frontend
+
+  kuma-bootstrap:
+    build:
+      context: ./services/hubos
+    image: hubos/core:local
+    command: ["bun", "run", "kuma:bootstrap"]
+    environment:
+      HUBOS_ENV: ${HUBOS_ENV:-development}
+      HUBOS_DATABASE_URL: ${HUBOS_DATABASE_URL:-postgresql://hubos:hubos-local-only@db:5432/hubos}
+      HUBOS_DEMO_MODE: ${HUBOS_DEMO_MODE:-false}
+      HUBOS_INGEST_KEY: ${HUBOS_INGEST_KEY:-local-demo-ingest-key}
+      HUBOS_ADMIN_KEY: ${HUBOS_ADMIN_KEY:-local-demo-admin-key}
+      KUMA_URL: http://kuma:3001
+      KUMA_OWNED_INSTANCE: "true"
+      KUMA_ADMIN_USER: ${KUMA_ADMIN_USER:-hubos-admin}
+      KUMA_ADMIN_PASSWORD: ${KUMA_ADMIN_PASSWORD:-hubos-local-kuma-admin-1}
+      KUMA_WEBHOOK_KEY: ${KUMA_WEBHOOK_KEY:-local-kuma-webhook-key}
+      KUMA_MONITOR_CONFIG: ${KUMA_MONITOR_CONFIG:-/config/kuma/monitors.example.json}
+    volumes:
+      - hubos-secrets:/run/hubos-secrets
+      - ./config/kuma:/config/kuma:ro
+    depends_on:
+      kuma:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      metabase:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  api:
+    environment:
+      KUMA_WEBHOOK_KEY: ${KUMA_WEBHOOK_KEY:-local-kuma-webhook-key}
+
+  worker:
+    environment:
+      KUMA_ADMIN_USER: ${KUMA_ADMIN_USER:-hubos-admin}
+      KUMA_ADMIN_PASSWORD: ${KUMA_ADMIN_PASSWORD:-hubos-local-kuma-admin-1}
+      KUMA_WEBHOOK_KEY: ${KUMA_WEBHOOK_KEY:-local-kuma-webhook-key}
+      HUBOS_NOTIFICATION_MODE: ${HUBOS_NOTIFICATION_MODE:-local}
+      HUBOS_NOTIFICATION_RECIPIENTS: ${HUBOS_NOTIFICATION_RECIPIENTS:-}
+      HUBOS_SMTP_HOST: ${HUBOS_SMTP_HOST:-}
+      HUBOS_SMTP_PORT: ${HUBOS_SMTP_PORT:-587}
+      HUBOS_SMTP_SECURE: ${HUBOS_SMTP_SECURE:-false}
+      HUBOS_SMTP_USERNAME: ${HUBOS_SMTP_USERNAME:-}
+      HUBOS_SMTP_PASSWORD: ${HUBOS_SMTP_PASSWORD:-}
+    volumes:
+      - hubos-secrets:/run/hubos-secrets:ro
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "${HUBOS_BIND_ADDRESS:-127.0.0.1}:${MAILPIT_WEB_PORT:-8025}:8025"
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+volumes:
+  kuma-data:
+  hubos-secrets:

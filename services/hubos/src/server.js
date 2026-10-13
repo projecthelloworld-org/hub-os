@@ -1,6 +1,7 @@
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { PostgresStore } from "./store/postgres.js";
+import { safeError } from './privacy.js';
 
 const config = loadConfig();
 const store = new PostgresStore({ databaseUrl: config.databaseUrl });
@@ -9,9 +10,10 @@ const app = createApp({ store, config });
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
+  maxRequestBodySize: 1024 * 1024,
   fetch: app,
   error(error) {
-    console.error(error);
+    console.error(safeError(error));
     return Response.json({ error: "Unexpected server error" }, { status: 500 });
   },
 });

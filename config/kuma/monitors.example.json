@@ -1,0 +1,14 @@
+{
+  "monitors": [
+    {
+      "enabled": false,
+      "key": "community-service-example",
+      "name": "Explicitly configured community target",
+      "scope": "community",
+      "site_id": "replace-with-canonical-site-uuid",
+      "url": "https://replace-with-reachable-target.example/health",
+      "interval_seconds": 60,
+      "max_retries": 1
+    }
+  ]
+}

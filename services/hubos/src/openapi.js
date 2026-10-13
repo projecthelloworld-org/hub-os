@@ -24,6 +24,18 @@ export function buildOpenApi(version = "0.1.0") {
       "/api/v1/incidents/{incidentId}/acknowledge": { post: { summary: "Acknowledge an incident", responses: { 200: { description: "Updated incident" } } } },
       "/api/v1/incidents/{incidentId}/resolve": { post: { summary: "Resolve an incident", responses: { 200: { description: "Updated incident" } } } },
       "/api/v1/ingest/observations:batch": { post: { summary: "Ingest normalized observations", responses: { 202: { description: "Ingestion result" } } } },
+      "/api/v1/source-connections/{sourceId}/webhook": {
+        post: {
+          summary: 'Ingest a source-scoped operational webhook through its installed plugin',
+          parameters: [{ name: 'sourceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          security: [{ sourceWebhookKey: [] }],
+          responses: { 202: { description: 'Validated observations, monitor samples and operational signals' },
+            401: { description: 'Invalid source-specific credential' }, 422: { description: 'Unmapped or malformed evidence' } },
+        },
+      },
     },
+    components: { securitySchemes: {
+      sourceWebhookKey: { type: 'apiKey', in: 'header', name: 'x-hubos-webhook-key' },
+    } },
   };
 }

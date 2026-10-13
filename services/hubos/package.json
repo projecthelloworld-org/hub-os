@@ -14,6 +14,7 @@
     "worker": "bun run src/worker.js",
     "seed": "bun run src/seed.js",
     "metabase:bootstrap": "bun run src/metabase/bootstrap.js",
+    "kuma:bootstrap": "bun run src/provision.js uptime-kuma",
     "test": "bun test",
     "check": "bun run tools/check.js",
     "db:new": "bunx dbmate --migrations-dir ../../db/migrations new",
@@ -22,5 +23,9 @@
   },
   "devDependencies": {
     "dbmate": "2.30.0"
+  },
+  "dependencies": {
+    "nodemailer": "10.1.0",
+    "socket.io-client": "4.8.3"
   }
 }

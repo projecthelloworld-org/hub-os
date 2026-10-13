@@ -5,6 +5,7 @@ import { runConnectorJob } from '../src/connector-runtime/runner.js';
 import { stableId, randomId } from '../src/ids.js';
 import { SQL } from 'bun';
 import { loadConnectorRegistry } from '../src/connectors/loader.js';
+import { readdir } from 'node:fs/promises';
 
 // Explicitly opt in against the disposable compose/test.compose.yaml database.
 const databaseUrl = process.env.HUBOS_TEST_DATABASE_URL;
@@ -118,6 +119,11 @@ suite('PostgreSQL source-driven runtime (isolated integration)', () => {
         VALUES (${siteId}, ${sourceId}, 'legacy-record', 'devices.active.count', 4, '2026-07-16T12:00:00Z')`;
       const migration = await Bun.file(new URL('../../../db/migrations/202610130001_source_driven_connectors.sql', import.meta.url)).text();
       await legacy.unsafe(migration.split('-- migrate:down')[0]);
+      const directory = new URL('../../../db/migrations/', import.meta.url);
+      for (const name of (await readdir(directory)).filter((name) => name.endsWith('.sql') && name > '202610130001_source_driven_connectors.sql').sort()) {
+        const next = await Bun.file(new URL(name, directory)).text();
+        await legacy.unsafe(next.split('-- migrate:down')[0]);
+      }
       const [preserved] = await legacy`SELECT o.site_id, o.value, ei.id AS mapping_id, sc.id AS source_id,
         sc.config->>'group_id' AS group_id, sc.enabled, sc.plugin_id
         FROM observations o JOIN source_connections sc ON sc.id = o.source_connection_id

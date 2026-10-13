@@ -7,12 +7,19 @@ x-hubos-environment: &hubos-environment
   HUBOS_INGEST_KEY: ${HUBOS_INGEST_KEY:-local-demo-ingest-key}
   HUBOS_ADMIN_KEY: ${HUBOS_ADMIN_KEY:-local-demo-admin-key}
   HUBOS_OPERATOR_CONSOLE_ENABLED: ${HUBOS_OPERATOR_CONSOLE_ENABLED:-true}
+  HUBOS_PLUGIN_CONFIG: ${HUBOS_PLUGIN_CONFIG:-/config/plugins/local.example.json}
 
 x-hubos-service: &hubos-service
   build:
     context: ./services/hubos
   image: hubos/core:local
   environment: *hubos-environment
+  env_file:
+    - path: ./config/source-secrets.env
+      required: false
+  volumes:
+    - ./config/plugins:/config/plugins:ro
+    - ./plugins:/plugins:ro
   restart: unless-stopped
   networks:
     - backend

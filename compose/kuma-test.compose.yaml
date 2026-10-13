@@ -1,0 +1,32 @@
+name: hubos-kuma-test
+services:
+  kuma:
+    image: louislam/uptime-kuma:2.5.6@sha256:9912da7d7d9b6ddc0c2d904beb84d24689c1ed9c33b81419eb9008663a92a329
+    environment:
+      UPTIME_KUMA_DB_TYPE: sqlite
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:13002:3001"
+    volumes:
+      - fixture-kuma:/app/data
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+  probe:
+    image: oven/bun:1.3.14-alpine
+    command: ["bun", "/fixtures/kuma-probe.js"]
+    ports:
+      - "127.0.0.1:13003:3900"
+    volumes:
+      - ../services/hubos/test/fixtures/kuma-probe.js:/fixtures/kuma-probe.js:ro
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:18025:8025"
+      - "127.0.0.1:11025:1025"
+volumes:
+  fixture-kuma:

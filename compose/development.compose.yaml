@@ -1,4 +1,7 @@
 services:
+  kuma-bootstrap:
+    environment:
+      HUBOS_DEMO_MODE: "true"
   seed:
     build:
       context: ./services/hubos

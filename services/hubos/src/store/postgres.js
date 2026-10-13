@@ -3,6 +3,7 @@ import { SQL } from "bun";
 import { randomId } from "../ids.js";
 import { StoreError } from "./errors.js";
 import { safeError, sanitizeAttributes } from '../privacy.js';
+import * as monitoring from './monitoring-postgres.js';
 
 function jsonValue(value) {
   return JSON.stringify(value ?? {});
@@ -110,7 +111,7 @@ export class PostgresStore {
     `;
     const incidents = await this.db`
       SELECT i.*, s.name AS site_name, s.country_code
-      FROM incidents i JOIN sites s ON s.id = i.site_id
+      FROM incidents i LEFT JOIN sites s ON s.id = i.site_id
       WHERE i.status NOT IN ('resolved', 'closed')
       ORDER BY i.started_at DESC
     `;
@@ -219,9 +220,25 @@ export class PostgresStore {
         ORDER BY ei.external_id
       `;
       targets.push({ source: { ...source, config: parseJsonValue(source.config) }, mappings });
+      targets.at(-1).monitors = await this.db`SELECT * FROM monitors WHERE source_connection_id = ${source.id} ORDER BY external_id`;
     }
     return targets;
   }
+
+  async getSourceContext(sourceId) {
+    const [source] = await this.db`SELECT id, organisation_id, name, plugin_id, base_url, config, is_demo, enabled, poll_interval_seconds
+      FROM source_connections WHERE id = ${sourceId}`;
+    if (!source || !source.enabled) throw new StoreError(404, 'Enabled source not found');
+    const [target] = await this.listConnectorTargets({ connector_id: source.plugin_id, source_connection_id: sourceId });
+    if (!target) throw new StoreError(404, 'Enabled source not found');
+    return target;
+  }
+
+  async registerMonitor(monitor) { return monitoring.registerMonitor(this.db, monitor); }
+  async ingestMonitorSamples(sourceId, samples) { return monitoring.ingestMonitorSamples(this.db, sourceId, samples); }
+  async applySignal(sourceId, signal) { return monitoring.applySignal(this.db, sourceId, signal); }
+  async claimNotification(leaseSeconds) { return monitoring.claimNotification(this.db, leaseSeconds); }
+  async finishNotification(job, error) { return monitoring.finishNotification(this.db, job, error); }
 
   async markSourceCollected(sourceId, observedAt) {
     await this.db`

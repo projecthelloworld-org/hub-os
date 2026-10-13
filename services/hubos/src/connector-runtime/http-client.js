@@ -6,7 +6,7 @@ export class CollectionError extends Error {
   }
 }
 
-export function createHttpClient({ fetchImpl = fetch, timeoutMs = 15000, maximumBytes = 8 * 1024 * 1024 } = {}) {
+export function createHttpClient({ fetchImpl = fetch, timeoutMs = 15000, maximumBytes = 8 * 1024 * 1024, responseType = 'json' } = {}) {
   return async function requestJson(url, options = {}) {
     let parsed;
     try { parsed = new URL(url); }
@@ -47,7 +47,9 @@ export function createHttpClient({ fetchImpl = fetch, timeoutMs = 15000, maximum
       const bytes = new Uint8Array(size);
       let offset = 0;
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-      try { return JSON.parse(new TextDecoder().decode(bytes)); }
+      const body = new TextDecoder().decode(bytes);
+      if (responseType === 'text') return body;
+      try { return JSON.parse(body); }
       catch { throw new CollectionError('SOURCE_MALFORMED_RESPONSE'); }
     } catch (error) {
       if (error instanceof CollectionError) throw error;

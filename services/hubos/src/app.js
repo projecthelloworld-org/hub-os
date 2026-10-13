@@ -2,12 +2,15 @@ import indexHtml from "../public/index.html" with { type: "text" };
 import appCss from "../public/app.css" with { type: "text" };
 import appJs from "../public/app.js" with { type: "text" };
 
-import { listConnectorManifests } from "./connectors/registry.js";
+import { listConnectorManifests, getConnector } from "./connectors/registry.js";
 import { json, noContent, readJson, requestHasKey, text } from "./http.js";
 import { buildOpenApi } from "./openapi.js";
 import { StoreError } from "./store/errors.js";
 import { requireText, validateObservationBatch } from "./validation.js";
 import { safeError } from './privacy.js';
+import { resolveCredentials } from './connector-runtime/secrets.js';
+import { persistConnectorResult } from './connector-runtime/results.js';
+import { profileFor } from './demo/data.js';
 
 const securityHeaders = {
   "x-content-type-options": "nosniff",
@@ -38,7 +41,7 @@ function errorResponse(error) {
   return json({ error: message }, status);
 }
 
-export function createApp({ store, config }) {
+export function createApp({ store, config, resolveSecrets = resolveCredentials, registry = { getConnector } }) {
   return async function fetch(request) {
     try {
       const url = new URL(request.url);
@@ -51,6 +54,11 @@ export function createApp({ store, config }) {
       if (request.method === "GET" && path === "/readyz") {
         await store.ready();
         return withSecurity(json({ status: "ready" }));
+      }
+      const demoProbe = path.match(/^\/demo\/probes\/((?:UG|AO)-DEMO-0[1-5])$/);
+      if (request.method === 'GET' && demoProbe && config.demoMode) {
+        const down = profileFor(demoProbe[1]).connectivity === 'critical';
+        return withSecurity(json({ synthetic: true, status: down ? 'down' : 'up' }, down ? 503 : 200));
       }
       if (request.method === "GET" && path === "/") {
         if (!config.operatorConsoleEnabled) return withSecurity(json({ error: "Operator console disabled" }, 404));
@@ -105,6 +113,21 @@ export function createApp({ store, config }) {
         requireApiKey(request, config, "ingest");
         const result = await store.ingestObservations(validateObservationBatch(await readJson(request)));
         return withSecurity(json(result, 202));
+      }
+      const webhook = path.match(/^\/api\/v1\/source-connections\/([0-9a-f-]{36})\/webhook$/i);
+      if (request.method === 'POST' && webhook) {
+        const target = await store.getSourceContext(webhook[1]);
+        const ref = target.source.config?.credential_refs?.webhookKey;
+        const credentials = await resolveSecrets(ref ? { webhookKey: ref } : {});
+        if (!requestHasKey(request, credentials.webhookKey, 'x-hubos-webhook-key')) {
+          throw Object.assign(new Error('Valid source webhook key required'), { status: 401 });
+        }
+        if (target.source.is_demo && !config.demoMode) throw Object.assign(new Error('Demonstration source disabled'), { status: 403 });
+        const connector = registry.getConnector(target.source.plugin_id);
+        if (!connector?.webhook) throw Object.assign(new Error('Source has no webhook lifecycle'), { status: 422 });
+        const normalized = await connector.webhook(await readJson(request), { ...target, config: target.source.config,
+          credentials, observedAt: new Date() });
+        return withSecurity(json(await persistConnectorResult({ store, target, connector, normalized }), 202));
       }
 
       return withSecurity(json({ error: "Not found" }, 404));

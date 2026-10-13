@@ -1,6 +1,7 @@
 import { randomId } from "../ids.js";
 import { StoreError } from "./errors.js";
 import { safeError, sanitizeAttributes } from '../privacy.js';
+import { rules, validateSignal, decideSignalTransition } from '../alerts/signals.js';
 
 function clone(value) {
   return structuredClone(value);
@@ -9,6 +10,10 @@ function clone(value) {
 export class MemoryStore {
   constructor(state) {
     this.state = clone(state);
+    this.state.monitors ??= [];
+    this.state.monitorSamples ??= [];
+    this.state.signalStates ??= [];
+    this.state.notifications ??= [];
   }
 
   async ready() {
@@ -152,12 +157,110 @@ export class MemoryStore {
     return clone(this.state.sourceConnections
       .filter((source) => source.enabled && source.status !== 'disabled' && source.plugin_id === job.connector_id
         && (!job.source_connection_id || source.id === job.source_connection_id))
-      .map((source) => ({ source, mappings: this.state.mappings
+      .map((source) => ({ source, monitors: this.state.monitors.filter((monitor) => monitor.source_connection_id === source.id), mappings: this.state.mappings
         .filter((mapping) => mapping.source_connection_id === source.id && mapping.entity_type === 'site' && mapping.verified)
         .flatMap((mapping) => {
           const site = this.state.sites.find((site) => site.id === mapping.entity_id && site.organisation_id === source.organisation_id);
           return site ? [{ external_id: mapping.external_id, site_id: site.id, site_code: site.site_code, is_demo: site.is_demo }] : [];
         }) })));
+  }
+
+  async getSourceContext(sourceId) {
+    const source = this.state.sourceConnections.find((source) => source.id === sourceId && source.enabled);
+    if (!source) throw new StoreError(404, 'Enabled source not found');
+    return (await this.listConnectorTargets({ connector_id: source.plugin_id, source_connection_id: sourceId }))[0];
+  }
+
+  async registerMonitor(monitor) {
+    const existing = this.state.monitors.find((item) => item.source_connection_id === monitor.source_connection_id && item.external_id === monitor.external_id);
+    if (existing) return clone(existing);
+    const source = this.state.sourceConnections.find((source) => source.id === monitor.source_connection_id);
+    const site = this.state.sites.find((site) => site.id === monitor.site_id);
+    if (!source || (monitor.site_id && (!site || site.organisation_id !== source.organisation_id))) {
+      throw new StoreError(422, 'Monitor site is not in the source organisation');
+    }
+    const item = { id: randomId(), enabled: true, interval_seconds: 60, is_demo: false, ...monitor };
+    this.state.monitors.push(item);
+    return clone(item);
+  }
+
+  async ingestMonitorSamples(sourceId, samples) {
+    let accepted = 0;
+    for (const sample of samples) {
+      const monitor = this.state.monitors.find((item) => item.id === sample.monitor_id && item.source_connection_id === sourceId && item.enabled);
+      if (!monitor || this.state.monitorSamples.some((item) => item.monitor_id === sample.monitor_id && item.observed_at === sample.observed_at)) continue;
+      this.state.monitorSamples.push({ ...clone(sample), response_ms: sample.status === 1 ? sample.response_ms ?? null : null });
+      accepted += 1;
+    }
+    return { accepted, duplicates: samples.length - accepted };
+  }
+
+  async applySignal(sourceId, incoming) {
+    const signal = validateSignal(incoming);
+    let subject;
+    if (signal.subject_type === 'monitor') {
+      const monitor = this.state.monitors.find((item) => item.id === signal.subject_id && item.source_connection_id === sourceId && item.enabled);
+      if (monitor) subject = { ...monitor, monitor_id: monitor.id };
+    } else {
+      const mapping = this.state.mappings.find((item) => item.entity_id === signal.subject_id && item.entity_type === 'site'
+        && item.source_connection_id === sourceId && item.verified);
+      const source = this.state.sourceConnections.find((source) => source.id === sourceId);
+      const site = this.state.sites.find((site) => site.id === mapping?.entity_id && site.organisation_id === source?.organisation_id);
+      if (site) subject = { ...site, site_id: site.id, scope: 'community' };
+    }
+    if (!subject) throw new StoreError(422, 'Signal subject is not mapped to this source');
+    let previous = this.state.signalStates.find((item) => item.source_connection_id === sourceId && item.rule_id === signal.rule_id
+      && item.subject_type === signal.subject_type && item.subject_id === signal.subject_id);
+    const incident = this.state.incidents.find((item) => item.id === previous?.incident_id);
+    const transition = decideSignalTransition(previous, signal, incident);
+    if (transition === 'ignored') return { transition, incident_id: previous?.incident_id ?? null };
+    let incidentId = previous?.incident_id ?? null;
+    if (transition === 'opened') {
+      incidentId = randomId();
+      const rule = rules[signal.rule_id];
+      this.state.incidents.push({ id: incidentId, site_id: subject.site_id ?? null, monitor_id: subject.monitor_id ?? null,
+        source_connection_id: sourceId, rule_id: signal.rule_id, title: `${rule.title}: ${subject.name}`, severity: rule.severity,
+        status: 'open', started_at: signal.observed_at, last_signal_at: signal.observed_at, signal_count: 1,
+        details: { synthetic: subject.is_demo, scope: subject.scope } });
+    } else if (transition === 'updated') {
+      incident.last_signal_at = signal.observed_at;
+      incident.signal_count += 1;
+    } else if (transition === 'recovered') {
+      Object.assign(incident, { status: 'resolved', resolved_at: signal.observed_at, last_signal_at: signal.observed_at,
+        resolution: 'Explicit healthy evidence received' });
+    }
+    if (['opened', 'recovered'].includes(transition) && !this.state.notifications.some((item) => item.incident_id === incidentId && item.event_kind === transition)) {
+      this.state.notifications.push({ id: randomId(), incident_id: incidentId, event_kind: transition,
+        status: 'pending', attempts: 0, max_attempts: 10, next_attempt_at: new Date().toISOString() });
+    }
+    if (!previous) {
+      previous = { source_connection_id: sourceId, rule_id: signal.rule_id, subject_type: signal.subject_type, subject_id: signal.subject_id };
+      this.state.signalStates.push(previous);
+    }
+    Object.assign(previous, { latest_at: signal.observed_at, state: signal.state, incident_id: incidentId });
+    return { transition, incident_id: incidentId };
+  }
+
+  async claimNotification(leaseSeconds = 60) {
+    const job = this.state.notifications.find((job) => job.attempts < job.max_attempts && Date.parse(job.next_attempt_at) <= Date.now()
+      && (job.event_kind === 'opened' || !this.state.notifications.some((opening) => opening.incident_id === job.incident_id
+        && opening.event_kind === 'opened' && !['delivered', 'dead'].includes(opening.status)))
+      && (['pending', 'failed'].includes(job.status) || (job.status === 'sending' && Date.parse(job.locked_at) < Date.now() - leaseSeconds * 1000)));
+    if (!job) return null;
+    Object.assign(job, { status: 'sending', lease_token: randomId(), locked_at: new Date().toISOString() });
+    return clone({ ...job, incident: this.state.incidents.find((incident) => incident.id === job.incident_id) });
+  }
+
+  async finishNotification(job, error = null) {
+    const current = this.state.notifications.find((item) => item.id === job.id && item.lease_token === job.lease_token);
+    if (!current) return;
+    if (error) {
+      current.attempts += 1;
+      Object.assign(current, { status: current.attempts >= current.max_attempts ? 'dead' : 'failed',
+        last_error: safeError(error), next_attempt_at: new Date(Date.now() + Math.min(3600000, 10000 * 2 ** (current.attempts - 1))).toISOString() });
+    } else Object.assign(current, { status: 'delivered', delivered_at: new Date().toISOString(), last_error: null });
+    current.lease_token = null;
+    current.locked_at = null;
   }
 
   async markSourceCollected(sourceId, observedAt) {

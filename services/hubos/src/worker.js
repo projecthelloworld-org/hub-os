@@ -5,11 +5,13 @@ import { runConnectorJob } from "./connector-runtime/runner.js";
 import { randomId } from "./ids.js";
 import { PostgresStore } from "./store/postgres.js";
 import { safeError } from './privacy.js';
+import { createNotificationSender, deliverNextNotification } from './alerts/delivery.js';
 
 const config = loadConfig();
 const store = new PostgresStore({ databaseUrl: config.databaseUrl });
 const workerId = `${hostname()}:${randomId().slice(0, 8)}`;
 let stopping = false;
+const sendNotification = createNotificationSender();
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -20,6 +22,7 @@ process.on('SIGINT', () => { stopping = true; });
 process.on('SIGTERM', () => { stopping = true; });
 while (!stopping) {
   try {
+    await deliverNextNotification({ store, send: sendNotification });
     const job = await store.claimConnectorJob(workerId, config.workerLeaseSeconds);
     if (!job) {
       await delay(config.workerPollIntervalMs);

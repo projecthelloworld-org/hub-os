@@ -1,5 +1,10 @@
 .DS_Store
 .env
+config/kuma/monitors.json
+config/plugins/local.json
+config/source-secrets.env
+plugins/*
+!plugins/README.md
 .venv/
 __pycache__/
 *.py[cod]
