@@ -2,6 +2,7 @@ import { SQL } from "bun";
 
 import { randomId } from "../ids.js";
 import { StoreError } from "./errors.js";
+import { safeError, sanitizeAttributes } from '../privacy.js';
 
 function jsonValue(value) {
   return JSON.stringify(value ?? {});
@@ -39,7 +40,7 @@ export class PostgresStore {
     if (countryCode) {
       return this.db`
         SELECT id, organisation_id, site_code, name, country_code, timezone,
-               latitude, longitude, is_demo, created_at, updated_at
+               latitude, longitude, is_demo, site_type, created_at, updated_at
         FROM sites
         WHERE country_code = ${countryCode.toUpperCase()}
         ORDER BY country_code, site_code
@@ -47,7 +48,7 @@ export class PostgresStore {
     }
     return this.db`
       SELECT id, organisation_id, site_code, name, country_code, timezone,
-             latitude, longitude, is_demo, created_at, updated_at
+             latitude, longitude, is_demo, site_type, created_at, updated_at
       FROM sites
       ORDER BY country_code, site_code
     `;
@@ -56,7 +57,7 @@ export class PostgresStore {
   async getSiteStatus(siteId) {
     const sites = await this.db`
       SELECT id, organisation_id, site_code, name, country_code, timezone,
-             latitude, longitude, is_demo, created_at, updated_at
+             latitude, longitude, is_demo, site_type, created_at, updated_at
       FROM sites WHERE id = ${siteId} LIMIT 1
     `;
     if (sites.length === 0) throw new StoreError(404, "Site not found");
@@ -70,7 +71,8 @@ export class PostgresStore {
   async listSourceConnections() {
     return this.db`
       SELECT id, organisation_id, name, connector_type, collection_mode,
-             status, base_url, last_success_at, created_at, updated_at
+             status, base_url, plugin_id, enabled, is_demo, poll_interval_seconds,
+             freshness_seconds, last_success_at, created_at, updated_at
       FROM source_connections ORDER BY name
     `;
   }
@@ -151,8 +153,8 @@ export class PostgresStore {
       const result = { accepted: 0, duplicates: 0, rejected: 0, errors: [] };
       for (const [index, item] of observations.entries()) {
         const sites = item.site_id
-          ? await tx`SELECT id FROM sites WHERE id = ${item.site_id} LIMIT 1`
-          : await tx`SELECT id FROM sites WHERE site_code = ${item.site_code} ORDER BY id LIMIT 2`;
+          ? await tx`SELECT id, organisation_id FROM sites WHERE id = ${item.site_id} LIMIT 1`
+          : await tx`SELECT id, organisation_id FROM sites WHERE site_code = ${item.site_code} ORDER BY id LIMIT 2`;
         if (sites.length === 0) {
           result.rejected += 1;
           result.errors.push(`observations[${index}]: Unknown ${item.site_id ? "site_id" : "site_code"}`);
@@ -164,8 +166,8 @@ export class PostgresStore {
           continue;
         }
         const siteId = sites[0].id;
-        const sources = await tx`SELECT id FROM source_connections WHERE id = ${item.source_connection_id}`;
-        if (sources.length === 0) {
+        const sources = await tx`SELECT id, organisation_id FROM source_connections WHERE id = ${item.source_connection_id}`;
+        if (sources.length === 0 || String(sources[0].organisation_id) !== String(sites[0].organisation_id)) {
           result.rejected += 1;
           result.errors.push(`observations[${index}]: Unknown source_connection_id`);
           continue;
@@ -174,6 +176,7 @@ export class PostgresStore {
           SELECT id FROM external_identifiers
           WHERE source_connection_id = ${item.source_connection_id}
             AND entity_type = 'site' AND entity_id = ${siteId} AND verified = true
+            AND (${item.external_entity_id ?? null}::text IS NULL OR external_id = ${item.external_entity_id ?? null})
           LIMIT 1
         `;
         if (mappings.length === 0) {
@@ -187,7 +190,7 @@ export class PostgresStore {
             unit, quality, observed_at, attributes
           ) VALUES (
             ${siteId}, ${item.source_connection_id}, ${item.external_record_id}, ${item.metric},
-            ${item.value}, ${item.unit}, ${item.quality}, ${item.observed_at}, ${jsonValue(item.attributes)}::jsonb
+            ${item.value}, ${item.unit}, ${item.quality}, ${item.observed_at}, ${jsonValue(sanitizeAttributes(item.attributes))}::jsonb
           )
           ON CONFLICT (source_connection_id, external_record_id, metric) DO NOTHING
           RETURNING id
@@ -199,20 +202,31 @@ export class PostgresStore {
     });
   }
 
-  async listConnectorTargets() {
-    return this.db`
-      SELECT
-        s.id AS site_id,
-        s.site_code,
-        max(sc.id::text) FILTER (WHERE sc.connector_type IN ('unifi', 'mikrotik')) AS connectivity_source_id,
-        max(sc.id::text) FILTER (WHERE sc.connector_type = 'innovex_remot') AS power_source_id,
-        max(sc.id::text) FILTER (WHERE sc.connector_type = 'headwind') AS devices_source_id
-      FROM sites s
-      JOIN external_identifiers ei ON ei.entity_id = s.id AND ei.entity_type = 'site' AND ei.verified = true
-      JOIN source_connections sc ON sc.id = ei.source_connection_id
-      WHERE s.is_demo = true
-      GROUP BY s.id, s.site_code
-      ORDER BY s.site_code
+  async listConnectorTargets(job) {
+    const sources = await this.db`
+      SELECT id, organisation_id, name, plugin_id, base_url, config, is_demo, poll_interval_seconds
+      FROM source_connections WHERE enabled AND status <> 'disabled' AND plugin_id = ${job.connector_id}
+      AND (${job.source_connection_id ?? null}::uuid IS NULL OR id = ${job.source_connection_id ?? null}::uuid)
+      ORDER BY id
+    `;
+    const targets = [];
+    for (const source of sources) {
+      const mappings = await this.db`
+        SELECT ei.external_id, s.id AS site_id, s.site_code, s.is_demo
+        FROM external_identifiers ei JOIN sites s ON s.id = ei.entity_id
+        WHERE ei.source_connection_id = ${source.id} AND ei.entity_type = 'site' AND ei.verified
+          AND s.organisation_id = ${source.organisation_id}
+        ORDER BY ei.external_id
+      `;
+      targets.push({ source: { ...source, config: parseJsonValue(source.config) }, mappings });
+    }
+    return targets;
+  }
+
+  async markSourceCollected(sourceId, observedAt) {
+    await this.db`
+      UPDATE source_connections SET last_success_at = ${observedAt}, status = 'healthy'
+      WHERE id = ${sourceId} AND (last_success_at IS NULL OR last_success_at <= ${observedAt})
     `;
   }
 
@@ -232,6 +246,7 @@ export class PostgresStore {
             observed_at = EXCLUDED.observed_at,
             rule_version = EXCLUDED.rule_version,
             updated_at = now()
+          WHERE EXCLUDED.observed_at >= status_snapshots.observed_at
         `;
       }
     });
@@ -251,16 +266,22 @@ export class PostgresStore {
     const rows = await this.db`
       WITH candidate AS (
         SELECT id FROM connector_jobs
-        WHERE status IN ('pending', 'failed')
+        WHERE (status IN ('pending', 'failed') OR
+               (status = 'running' AND locked_at < now() - make_interval(secs => ${leaseSeconds})))
           AND attempts < max_attempts
           AND next_run_at <= now()
           AND (locked_at IS NULL OR locked_at < now() - make_interval(secs => ${leaseSeconds}))
         ORDER BY next_run_at, created_at
         FOR UPDATE SKIP LOCKED
         LIMIT 1
+      ), abandoned AS (
+        UPDATE connector_runs r SET status = 'failed', finished_at = now(), error = 'WORKER_LEASE_EXPIRED'
+        FROM candidate WHERE r.connector_job_id = candidate.id AND r.status = 'running'
+        RETURNING r.id
       )
       UPDATE connector_jobs j
-      SET status = 'running', locked_at = now(), locked_by = ${workerId}, updated_at = now()
+      SET status = 'running', locked_at = now(), locked_by = ${workerId},
+          lease_token = gen_random_uuid(), updated_at = now()
       FROM candidate
       WHERE j.id = candidate.id
       RETURNING j.*
@@ -280,14 +301,14 @@ export class PostgresStore {
   async finishConnectorRun(runId, summary) {
     await this.db`
       UPDATE connector_runs SET status = 'succeeded', finished_at = now(), summary = ${jsonValue(summary)}::jsonb
-      WHERE id = ${runId}
+      WHERE id = ${runId} AND status = 'running'
     `;
   }
 
   async failConnectorRun(runId, error) {
     await this.db`
-      UPDATE connector_runs SET status = 'failed', finished_at = now(), error = ${String(error).slice(0, 2000)}
-      WHERE id = ${runId}
+      UPDATE connector_runs SET status = 'failed', finished_at = now(), error = ${safeError(error)}
+      WHERE id = ${runId} AND status = 'running'
     `;
   }
 
@@ -299,8 +320,8 @@ export class PostgresStore {
             WHEN schedule_interval_seconds IS NULL THEN next_run_at
             ELSE now() + make_interval(secs => schedule_interval_seconds)
           END,
-          attempts = 0, locked_at = NULL, locked_by = NULL, last_error = NULL, updated_at = now()
-      WHERE id = ${job.id}
+          attempts = 0, locked_at = NULL, locked_by = NULL, lease_token = NULL, last_error = NULL, updated_at = now()
+      WHERE id = ${job.id} AND lease_token = ${job.lease_token}::uuid
     `;
   }
 
@@ -309,10 +330,19 @@ export class PostgresStore {
       UPDATE connector_jobs
       SET attempts = attempts + 1,
           status = CASE WHEN attempts + 1 >= max_attempts THEN 'dead' ELSE 'failed' END,
-          next_run_at = now() + make_interval(secs => 30),
-          locked_at = NULL, locked_by = NULL, last_error = ${String(error).slice(0, 2000)}, updated_at = now()
-      WHERE id = ${job.id}
+          next_run_at = now() + make_interval(secs => ${Math.min(86400, Math.max(30, Number(error?.retryAfterSeconds) || 30))}),
+          locked_at = NULL, locked_by = NULL, lease_token = NULL, last_error = ${safeError(error)}, updated_at = now()
+      WHERE id = ${job.id} AND lease_token = ${job.lease_token}::uuid
     `;
+  }
+
+  async renewConnectorLease(job) {
+    const rows = await this.db`
+      UPDATE connector_jobs SET locked_at = now()
+      WHERE id = ${job.id} AND status = 'running' AND lease_token = ${job.lease_token}::uuid
+      RETURNING id
+    `;
+    return rows.length === 1;
   }
 
   async seedDemo(state) {
@@ -326,14 +356,20 @@ export class PostgresStore {
       for (const source of state.sourceConnections) {
         await tx`
           INSERT INTO source_connections (
-            id, organisation_id, name, connector_type, collection_mode, status, last_success_at
+            id, organisation_id, name, connector_type, plugin_id, collection_mode, status,
+            enabled, is_demo, config, poll_interval_seconds, freshness_seconds, last_success_at
           ) VALUES (
             ${source.id}, ${source.organisation_id}, ${source.name}, ${source.connector_type},
-            ${source.collection_mode}, ${source.status}, ${source.last_success_at}
+            ${source.plugin_id ?? source.connector_type}, ${source.collection_mode}, ${source.status},
+            ${source.enabled ?? false}, ${source.is_demo ?? false}, ${jsonValue(source.config)}::jsonb,
+            ${source.poll_interval_seconds ?? 60}, ${source.freshness_seconds ?? 300}, ${source.last_success_at}
           )
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name, connector_type = EXCLUDED.connector_type,
             collection_mode = EXCLUDED.collection_mode, status = EXCLUDED.status,
+            plugin_id = EXCLUDED.plugin_id, enabled = EXCLUDED.enabled, is_demo = EXCLUDED.is_demo,
+            config = EXCLUDED.config, poll_interval_seconds = EXCLUDED.poll_interval_seconds,
+            freshness_seconds = EXCLUDED.freshness_seconds,
             last_success_at = EXCLUDED.last_success_at, updated_at = now()
         `;
       }
@@ -341,15 +377,15 @@ export class PostgresStore {
         await tx`
           INSERT INTO sites (
             id, organisation_id, site_code, name, country_code, timezone,
-            latitude, longitude, is_demo
+            latitude, longitude, is_demo, site_type
           ) VALUES (
             ${site.id}, ${site.organisation_id}, ${site.site_code}, ${site.name},
-            ${site.country_code}, ${site.timezone}, ${site.latitude}, ${site.longitude}, ${site.is_demo}
+            ${site.country_code}, ${site.timezone}, ${site.latitude}, ${site.longitude}, ${site.is_demo}, ${site.site_type ?? 'other'}
           )
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name, country_code = EXCLUDED.country_code,
             timezone = EXCLUDED.timezone, latitude = EXCLUDED.latitude,
-            longitude = EXCLUDED.longitude, is_demo = EXCLUDED.is_demo, updated_at = now()
+            longitude = EXCLUDED.longitude, is_demo = EXCLUDED.is_demo, site_type = EXCLUDED.site_type, updated_at = now()
         `;
       }
       for (const mapping of state.mappings) {

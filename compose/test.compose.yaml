@@ -1,0 +1,30 @@
+name: hubos-v02-test
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hubos_test
+      POSTGRES_USER: hubos_test
+      POSTGRES_PASSWORD: fixture-only-not-for-deployment
+    ports:
+      - "127.0.0.1:${HUBOS_TEST_DATABASE_PORT:-15432}:5432"
+    volumes:
+      - test-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hubos_test -d hubos_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2.30.0
+    command: ["--wait", "--migrations-dir", "/db/migrations", "--no-dump-schema", "up"]
+    environment:
+      DATABASE_URL: postgresql://hubos_test:fixture-only-not-for-deployment@db:5432/hubos_test?sslmode=disable
+    volumes:
+      - ../db:/db:ro
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  test-postgres:

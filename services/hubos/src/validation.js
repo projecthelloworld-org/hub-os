@@ -1,3 +1,5 @@
+import { sanitizeAttributes } from './privacy.js';
+
 const observationKeys = [
   "source_connection_id",
   "external_record_id",
@@ -31,12 +33,24 @@ export function validateObservationBatch(body) {
     if (Number.isNaN(Date.parse(item.observed_at))) {
       throw Object.assign(new Error(`observations[${index}].observed_at must be an ISO date`), { status: 422 });
     }
+    if (typeof item.metric !== 'string' || !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(item.metric) || item.metric.length > 160) {
+      throw Object.assign(new Error(`observations[${index}].metric must be a canonical metric name`), { status: 422 });
+    }
+    if (typeof item.external_record_id !== 'string' || item.external_record_id.length > 256) {
+      throw Object.assign(new Error(`observations[${index}].external_record_id must be a bounded identifier`), { status: 422 });
+    }
+    if (!['valid', 'estimated', 'suspect', 'invalid'].includes(item.quality ?? 'valid')) {
+      throw Object.assign(new Error(`observations[${index}].quality is invalid`), { status: 422 });
+    }
+    if (item.unit != null && (typeof item.unit !== 'string' || !/^[a-zA-Z0-9%/_.-]{1,32}$/.test(item.unit))) {
+      throw Object.assign(new Error(`observations[${index}].unit is invalid`), { status: 422 });
+    }
   });
   return body.observations.map((item) => ({
     ...item,
     unit: item.unit ?? null,
     quality: item.quality ?? "valid",
-    attributes: item.attributes ?? {},
+    attributes: sanitizeAttributes(item.attributes),
   }));
 }
 

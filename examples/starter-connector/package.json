@@ -1,0 +1,7 @@
+{
+  "name": "hubos-starter-connector",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "hubos": { "connector": "index.js" }
+}

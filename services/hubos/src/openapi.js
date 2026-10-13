@@ -4,7 +4,7 @@ export function buildOpenApi(version = "0.1.0") {
     info: {
       title: "HubOS API",
       version,
-      description: "A small, vendor-neutral API for school connectivity operations.",
+      description: "A vendor-neutral API for community-site connectivity operations; schools are one supported site type.",
     },
     paths: {
       "/healthz": { get: { summary: "Process health", responses: { 200: { description: "Healthy" } } } },

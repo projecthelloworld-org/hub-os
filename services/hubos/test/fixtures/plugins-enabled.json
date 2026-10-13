@@ -1,0 +1,6 @@
+{
+  "plugins": [
+    { "path": "../../../../examples/starter-connector", "enabled": true },
+    { "path": "this-disabled-package-does-not-exist", "enabled": false }
+  ]
+}

@@ -42,7 +42,7 @@ describe("health and operator console", () => {
 });
 
 describe("read API", () => {
-  test("lists ten demo schools and filters by country", async () => {
+  test("lists ten demonstration community sites and filters by country", async () => {
     const all = await (await request("/api/v1/sites")).json();
     const uganda = await (await request("/api/v1/sites?country=ug")).json();
     expect(all.sites).toHaveLength(10);

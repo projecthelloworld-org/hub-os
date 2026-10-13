@@ -1,0 +1,5 @@
+{
+  "plugins": [
+    { "path": "../../examples/starter-connector", "enabled": false }
+  ]
+}

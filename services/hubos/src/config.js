@@ -32,6 +32,10 @@ export function loadConfig(env = process.env) {
     version: env.HUBOS_VERSION ?? "0.1.0",
   };
 
+  if (config.workerLeaseSeconds < 30 || config.workerLeaseSeconds > 3600) {
+    throw new Error('HUBOS_WORKER_LEASE_SECONDS must be between 30 and 3600');
+  }
+
   if (config.environment.toLowerCase() === "production") {
     if (config.demoMode) {
       throw new Error("HUBOS_DEMO_MODE must be disabled in production");

@@ -7,6 +7,7 @@ import { json, noContent, readJson, requestHasKey, text } from "./http.js";
 import { buildOpenApi } from "./openapi.js";
 import { StoreError } from "./store/errors.js";
 import { requireText, validateObservationBatch } from "./validation.js";
+import { safeError } from './privacy.js';
 
 const securityHeaders = {
   "x-content-type-options": "nosniff",
@@ -33,7 +34,7 @@ function requireApiKey(request, config, kind) {
 function errorResponse(error) {
   const status = error instanceof StoreError ? error.status : error.status ?? 500;
   const message = status >= 500 ? "Unexpected server error" : error.message;
-  if (status >= 500) console.error(error);
+  if (status >= 500) console.error(safeError(error));
   return json({ error: message }, status);
 }
 

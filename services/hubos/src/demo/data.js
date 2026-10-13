@@ -13,14 +13,14 @@ export const sourceDefinitions = [
 
 export const siteDefinitions = [
   ["UG-DEMO-01", "Uganda Demo School 01", "UG", "Africa/Kampala", 0.3476, 32.5825],
-  ["UG-DEMO-02", "Uganda Demo School 02", "UG", "Africa/Kampala", 0.671, 30.275],
-  ["UG-DEMO-03", "Uganda Demo School 03", "UG", "Africa/Kampala", 1.3733, 32.2903],
-  ["UG-DEMO-04", "Uganda Demo School 04", "UG", "Africa/Kampala", 2.7746, 32.299],
+  ["UG-DEMO-02", "Uganda Demo Community Centre 02", "UG", "Africa/Kampala", 0.671, 30.275],
+  ["UG-DEMO-03", "Uganda Demo Library 03", "UG", "Africa/Kampala", 1.3733, 32.2903],
+  ["UG-DEMO-04", "Uganda Demo Community Centre 04", "UG", "Africa/Kampala", 2.7746, 32.299],
   ["UG-DEMO-05", "Uganda Demo School 05", "UG", "Africa/Kampala", -0.6133, 30.6583],
   ["AO-DEMO-01", "Angola Demo School 01", "AO", "Africa/Luanda", -8.839, 13.2894],
-  ["AO-DEMO-02", "Angola Demo School 02", "AO", "Africa/Luanda", -12.5763, 13.4055],
-  ["AO-DEMO-03", "Angola Demo School 03", "AO", "Africa/Luanda", -12.3833, 16.9333],
-  ["AO-DEMO-04", "Angola Demo School 04", "AO", "Africa/Luanda", -14.6585, 17.69],
+  ["AO-DEMO-02", "Angola Demo Community Centre 02", "AO", "Africa/Luanda", -12.5763, 13.4055],
+  ["AO-DEMO-03", "Angola Demo Library 03", "AO", "Africa/Luanda", -12.3833, 16.9333],
+  ["AO-DEMO-04", "Angola Demo Community Centre 04", "AO", "Africa/Luanda", -14.6585, 17.69],
   ["AO-DEMO-05", "Angola Demo School 05", "AO", "Africa/Luanda", -15.1961, 12.1522],
 ];
 
@@ -40,9 +40,9 @@ export function profileFor(siteCode) {
 
 export function statusReason(domain, status) {
   const reasons = {
-    "connectivity:healthy": "WAN probe and controller data are healthy",
-    "connectivity:degraded": "WAN is reachable but latency and packet loss are elevated",
-    "connectivity:critical": "Site-perspective WAN probe is failing",
+    "connectivity:healthy": "Synthetic demo WAN probe is healthy",
+    "connectivity:degraded": "Synthetic demo latency and packet loss are elevated",
+    "connectivity:critical": "Synthetic demo WAN probe is failing",
     "power:healthy": "Battery and panel telemetry are within the demo range",
     "power:degraded": "Battery voltage is below the configured demo warning level",
     "devices:healthy": "Managed-device activity is within the demo range",
@@ -87,6 +87,14 @@ export function buildDemoState(date = new Date()) {
     key,
     name,
     connector_type: connectorType,
+    plugin_id: 'mock-school-telemetry',
+    config: { demo: true, profile: ['unifi', 'mikrotik'].includes(connectorType) ? 'connectivity'
+      : connectorType === 'innovex_remot' ? 'power' : connectorType === 'headwind' ? 'devices'
+      : connectorType === 'odk' ? 'survey' : 'none' },
+    enabled: true,
+    is_demo: true,
+    poll_interval_seconds: 60,
+    freshness_seconds: 300,
     collection_mode: collectionMode,
     status: "healthy",
     last_success_at: now,
@@ -103,6 +111,7 @@ export function buildDemoState(date = new Date()) {
     latitude,
     longitude,
     is_demo: true,
+    site_type: name.includes('School') ? 'school' : name.includes('Library') ? 'library' : 'community_centre',
   }));
 
   const mappings = [];
@@ -162,7 +171,7 @@ export function buildDemoState(date = new Date()) {
         unit,
         quality: "valid",
         observed_at: now,
-        attributes: { synthetic: true, profile: "ten-school-demo" },
+        attributes: { synthetic: true, scope: 'synthetic', sample_interval_seconds: 60 },
       });
     }
   }
@@ -178,7 +187,7 @@ export function buildDemoState(date = new Date()) {
       {
         id: stableId("incident", "ao-demo-05-wan"),
         site_id: stableId("site", "AO-DEMO-05"),
-        title: "School connectivity unavailable",
+        title: "Community-site connectivity unavailable (demonstration)",
         severity: "high",
         status: "open",
         owner: "Angola network support queue",
@@ -200,6 +209,7 @@ export function buildDemoState(date = new Date()) {
         next_run_at: now,
         schedule_interval_seconds: 60,
         max_attempts: 5,
+        attempts: 0,
       },
     ],
   };
