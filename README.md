@@ -4,6 +4,8 @@ HubOS is an open, self-hostable operations layer for monitoring and supporting s
 
 The included ten-school Uganda and Angola dataset is entirely synthetic. It demonstrates the product without turning a particular pilot into an architectural dependency.
 
+The published `v0.1.0` release is a demonstration scaffold, not a fully connected or production-ready monitoring system. Only the synthetic connector is registered. Live vendor connectors, prebuilt Metabase dashboards and alert rules, automatic alert-to-incident creation, and production privacy/access controls remain unfinished. See the [implementation audit](docs/HubOS_Pilot_Ready_Technical_Design.md#11-delivered-scaffold-versus-target-architecture) for delivered capabilities and the staged roadmap.
+
 ## Version 1 stack
 
 - Bun 1.3.14 with vanilla JavaScript for all HubOS-owned runtime code;
@@ -12,11 +14,11 @@ The included ten-school Uganda and Angola dataset is entirely synthetic. It demo
 - PostgreSQL 16 as the canonical, operational, and analytical store;
 - plain SQL migrations managed by Dbmate—no custom ORM or schema-management layer;
 - Caddy as the only public entry point to HubOS;
-- Metabase for monitoring, evaluation, dashboards, and alert delivery;
+- Metabase with automatic database connection and analytical views; dashboard and alert provisioning remain planned;
 - Mailpit for local alert testing;
 - optional pinned ODK Central and Headwind MDM Compose applications.
 
-Valkey, Celery, Prometheus, Grafana, Alertmanager, and Superset are intentionally outside Version 1. PostgreSQL already provides the durable queue needed at this scale, and Metabase covers the initial reporting and alerting requirement. Superset remains a possible Version 2 deployment option rather than another default dependency.
+Valkey, Celery, Prometheus, Grafana, Alertmanager, and Superset are intentionally outside Version 1. PostgreSQL already provides the durable queue needed at this scale, and Metabase is the selected tool for the planned reporting and alerting workflow. Superset remains a possible Version 2 deployment option rather than another default dependency.
 
 ## Quick start
 
@@ -51,6 +53,8 @@ The first start applies the SQL migrations and seeds five fictional schools in U
 
 The development layer also initializes Metabase and adds `HubOS PostgreSQL` automatically. With the Compose defaults, sign in with `admin@hubos.local` and `hubos-local-admin-1`. Set `METABASE_ADMIN_EMAIL` and `METABASE_ADMIN_PASSWORD` before the first start for any shared environment.
 
+This bootstrap creates the administrator and data source only. It does not create Metabase questions, dashboards, subscriptions, or alert rules. Mailpit provides a local SMTP destination for notification testing, not an automatic outage alert system.
+
 ## Optional ODK and Headwind environment
 
 Version 1 includes ODK Central and Headwind MDM as optional, independently upgradable Compose projects:
@@ -61,7 +65,9 @@ make ecosystem-config
 make ecosystem-up
 ```
 
-This fetches the pinned upstream releases and runs them with HubOS, Metabase, and Mailpit. It is a deployment template: HubOS can also connect to existing hosted ODK or Headwind instances.
+This fetches the pinned upstream releases and runs them with HubOS, Metabase, and Mailpit. It is a deployment template: the target design also accommodates existing hosted ODK or Headwind instances.
+
+The optional deployments do not yet include live HubOS connectors. Review their service credentials and domain configuration before use outside a local demonstration.
 
 ## Local Bun development
 

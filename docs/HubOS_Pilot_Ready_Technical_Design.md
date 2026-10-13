@@ -2,11 +2,11 @@
 
 **Product:** HubOS  
 **Programme:** Project Hello World  
-**Document status:** Proposed implementation baseline  
-**Reference deployment:** Ten schools - five in Uganda and five in Angola  
+**Document status:** Target architecture with a v0.1.0 implementation audit\
+**Reference demonstration:** Ten fictional schools - five in Uganda and five in Angola\
 **Primary purpose:** Monitor and support school connectivity  
 **Deployment model:** Open-source, self-hosted, modular Docker Compose stack  
-**Last updated:** 16 July 2026
+**Last updated:** 13 October 2026
 
 ---
 
@@ -14,7 +14,7 @@
 
 HubOS is an open-source operations and evidence layer for school connectivity. It brings together data that already exists in network controllers, routers, solar monitoring systems, managed devices, ISP records, field forms, and maintenance workflows. It converts that data into a shared view of whether each school is connected, powered, observable, and receiving support.
 
-The first reference deployment covers ten schools across Uganda and Angola. Its purpose is operational feasibility: demonstrating that a small technical team can detect problems earlier, understand their likely cause, route them to the right person, and measure whether service was restored.
+The reference demonstration uses ten fictional schools across Uganda and Angola. The target for a connected deployment is operational feasibility: demonstrating that a small technical team can detect problems earlier, understand their likely cause, route them to the right person, and measure whether service was restored.
 
 HubOS is not a new router controller, solar platform, MDM, survey tool, or learning platform. It connects to those tools through replaceable adapters. The product-owned code is intentionally limited to the functions that make the separate systems work together:
 
@@ -26,6 +26,30 @@ HubOS is not a new router controller, solar platform, MDM, survey tool, or learn
 - dashboards, deployment configuration, tests, and runbooks.
 
 The system is packaged as modular Docker Compose projects. A partner can deploy only the core monitoring services, add ODK or Headwind MDM, enable a generic IoT platform, or connect existing hosted systems. This avoids forcing every deployment into one large and fragile software bundle.
+
+### 1.1 Delivered scaffold versus target architecture
+
+The published `v0.1.0` release is a runnable demonstration scaffold, not a fully connected or production-ready monitoring product. The remaining sections specify the target architecture unless explicitly identified as implemented. An integration described here, or named in a source connection record, is not evidence that its live connector exists.
+
+| Requirement | Implemented position |
+|---|---|
+| Technical design and funder/contributor document | This design and the open connectivity prospectus are written |
+| Vanilla JavaScript/Bun and simplified Compose stack | Implemented for the core API, console, worker, PostgreSQL, Caddy, Metabase, and local Mailpit testing |
+| Demonstration schools | Ten synthetic sites: five in Uganda and five in Angola; no real school or learner records |
+| Uniform connector interface and SQL migrations | Implemented connector lifecycle and shared runner; plain SQL migrations with Dbmate, not a custom ORM |
+| Canonical registry and external identifiers | Organisation, site, source connection, and external identifier tables exist; separate hub, asset, and service registries remain target entities |
+| Scheduling, status, and incidents | PostgreSQL jobs/leases, synthetic status, and incident acknowledgement/resolution are implemented; automatic alert-to-incident creation is not |
+| Metabase default setup | Administrator and `HubOS PostgreSQL` connection are bootstrapped; analytical views exist, but questions, dashboards, subscriptions, and alert rules are not automatically provisioned |
+| Headwind MDM and ODK Central | Optional pinned deployment templates exist; live HubOS data connectors and production service configuration remain unfinished |
+| UniFi, MikroTik, REMOT, and ISP imports | Target interfaces and source records exist; the only registered runtime connector is `mock-school-telemetry` |
+| Multiple controllers | The source-connection and identifier model provides a foundation; controller administration and live multi-controller testing remain unfinished |
+| Real-data privacy and partner isolation | Demo data is synthetic and writes use shared API keys; anonymization enforcement, retention, OIDC, scoped access, and tenant isolation are not implemented |
+| Offline buffering, quarantine/replay, and backup/restore | Planned; central job retries do not replace an offline site buffer or a tested restore process |
+| Generic solar/IoT and RADIUS vouchers | Planned optional extensions, not bundled runtime services |
+| MIT, public releases, and installer hosting | MIT selected; `v0.1.0` published with checksums/SBOM; latest and versioned installers are live over HTTPS |
+| Valkey, Prometheus, Grafana, Alertmanager, and Superset | Intentionally excluded from Version 1; not missing default services |
+
+This audit covers the requirements recorded in the project conversation and the repository implementation. The original Downloads specification was unavailable during this audit. Passing scaffold tests does not establish live-vendor interoperability, safe real-data handling, or field operational feasibility.
 
 ---
 
@@ -109,7 +133,7 @@ The same architecture can expand from ten schools to larger programmes by adding
 | Thinger.io | Optional external connector/evaluation target | Useful APIs and device support, but current on-premise deployment requires a licensed private instance |
 | Access control | FreeRADIUS 3 with optional OpenWISP Radius/login pages | Open AAA foundation; enforcement remains with the router or network access server |
 | HubOS API | Vanilla JavaScript service on Bun | Keeps all HubOS custom runtime code in the selected JavaScript stack |
-| Operator console | Vanilla HTML, CSS, and JavaScript delivered by the Bun service | Provides mappings, connector health, acknowledgement, assignment, and incident closure without a frontend framework |
+| Operator console | Vanilla HTML, CSS, and JavaScript delivered by the Bun service | Current console shows sites, sources, connector health, and incident acknowledgement/resolution; mapping administration and assignment remain planned |
 | Background work | Bun worker using PostgreSQL-backed jobs and leases | Provides scheduled pulls, retries, and restart recovery without a separate HubOS message broker |
 | Reverse proxy | Caddy | Simple local and production routing with automatic HTTPS when enabled |
 | Identity | OIDC-compatible integration; optional Keycloak profile | Allows partners to bring an identity provider without coupling core services to one product |
@@ -283,7 +307,7 @@ The production design must reserve capacity for database indexes, write-ahead lo
 
 ### 7.1 Identifier strategy
 
-HubOS issues its own immutable UUID for every organisation, site, hub, asset, service, and connection. External identifiers are never used as primary keys.
+The target model assigns immutable UUIDs to organisations, sites, hubs, assets, services, and connections. The delivered migrations implement organisations, sites, source connections, and external identifiers; separate hub, asset, and service tables are not yet implemented. External identifiers are never used as primary keys.
 
 For example, one school may be known as:
 
@@ -298,6 +322,8 @@ For example, one school may be known as:
 All are mapped to one canonical `site_id` through `external_identifier` records.
 
 ### 7.2 Core entities
+
+The following is the target domain model, not a list of tables already delivered in `v0.1.0`.
 
 | Entity | Purpose |
 |---|---|
@@ -603,7 +629,9 @@ Power thresholds must be configured per battery chemistry and system design. The
 
 ### 10.4 Notification delivery
 
-Version 1 uses Metabase questions, dashboard subscriptions, and alerts against the canonical and `analytics` schemas. The initial supported delivery methods are:
+The target monitoring workflow uses Metabase questions, dashboard subscriptions, and alerts against the canonical and `analytics` schemas. In `v0.1.0`, Metabase is connected to PostgreSQL and its local SMTP delivery is configured for Mailpit. Questions, dashboards, subscriptions, alert definitions, and the alert-to-incident bridge are not provisioned. Creating those is operational implementation work, not part of the database bootstrap.
+
+The planned delivery methods, subject to the selected Metabase edition and workflow, are:
 
 - email;
 - Slack where the deployment configures it;
@@ -833,6 +861,8 @@ During a controlled seven-day test with healthy source systems, each enabled con
 
 ### 14.2 Initial resources
 
+This is the target API surface. The delivered endpoints are listed in the repository README and `/api/v1/openapi.json`; asset, mapping administration, KPI, webhook, and incident assignment endpoints below remain planned.
+
 ```text
 GET  /healthz
 GET  /readyz
@@ -959,14 +989,16 @@ The production template must include:
 
 Local development must not depend on access to live schools or vendor accounts.
 
-The `dev` profile provides:
+The delivered development overlay provides:
 
-- mock UniFi, MikroTik, REMOT, ISP, Headwind, and ODK endpoints;
+- one uniform synthetic connector, not separate mock vendor HTTP endpoints;
 - deterministic ten-school seed data for Uganda and Angola;
-- simulated healthy, degraded, offline, stale, and recovery scenarios;
+- fixed synthetic operational status profiles and sample connectivity, power, and device observations;
 - Mailpit for notification inspection;
-- example dashboards and incidents;
-- fixtures derived from documentation with all credentials and personal data removed.
+- a seeded example incident and an operator console;
+- analytical views and the automatic Metabase administrator/database connection setup.
+
+Vendor-shaped HTTP fixtures, stale/recovery transition scenarios, prebuilt Metabase dashboards, and automatic alert tests remain planned. Including Mailpit does not itself define or trigger an operational alert.
 
 The ISP PDF sample may inform a sanitised fixture, but the original report should not be committed unless its owner explicitly approves publication.
 
@@ -979,19 +1011,21 @@ The product can evolve continuously, but dependencies still require an order.
 ### Stage 1 - Observable core scaffold
 
 - Docker Compose core and local development profile;
-- site and asset registry;
+- organisation, site, source connection, and external identifier registry;
 - external identifier mapping;
 - uniform connector contract and working mock connector;
 - source connection records for REMOT, UniFi, MikroTik, ISP files, Headwind, and ODK;
 - current site status;
 - vanilla-JavaScript operator console;
-- Metabase-ready analytical views and local alert email testing;
+- Metabase database bootstrap, analytical views, and Mailpit SMTP configuration for local notification testing;
 - basic incident workflow;
 - optional pinned ODK Central and Headwind MDM deployments;
 - first connectivity, power, device-activity, and freshness calculations.
 
 ### Stage 2 - Operational hardening
 
+- hub, asset, and service registry expansion;
+- Metabase questions, dashboards, subscriptions, alert definitions, and alert-to-incident integration;
 - site agent and persistent offline buffer;
 - live REMOT, UniFi, MikroTik, ISP-file, Headwind, and ODK connectors;
 - multi-controller administration;
@@ -1042,24 +1076,25 @@ Voucher work is deliberately sequenced after monitoring because it introduces us
 
 The following decisions do not block local development but must be recorded before a live deployment:
 
-1. The licence for HubOS-owned code and documentation.
-2. The identity provider and production role matrix.
-3. The hosting and backup provider for each deployment.
-4. The approved source credentials and controller network paths.
-5. Battery-specific thresholds for every monitored power system.
-6. The incident owners, notification receivers, and escalation rules in each country.
-7. The operational hours used for school-hours reporting.
-8. The final retention policy and ODK data-sharing boundary.
-9. The initial service targets after baseline evidence exists.
-10. The Giga or external-partner API contract.
-11. Whether ThingsBoard CE is required in the initial reference deployment or introduced when generic sensors are added.
-12. Whether any protocol-category ISP data has an approved operational use.
+HubOS-owned code and documentation are released under MIT. That decision is closed; third-party component licences still apply independently.
+
+1. The identity provider and production role matrix.
+2. The hosting and backup provider for each deployment.
+3. The approved source credentials and controller network paths.
+4. Battery-specific thresholds for every monitored power system.
+5. The incident owners, notification receivers, and escalation rules in each country.
+6. The operational hours used for school-hours reporting.
+7. The final retention policy and ODK data-sharing boundary.
+8. The initial service targets after baseline evidence exists.
+9. The Giga or external-partner API contract.
+10. Whether ThingsBoard CE is introduced when generic sensors are added or in an earlier connected deployment.
+11. Whether any protocol-category ISP data has an approved operational use.
 
 ---
 
 ## 21. Definition of a successful reference implementation
 
-The reference implementation is successful when:
+These are acceptance criteria for a future connected reference implementation, not completed claims about `v0.1.0`. The reference implementation is successful when:
 
 - all ten schools have canonical records and verified external mappings;
 - HubOS can determine whether network, power, and device data are fresh;

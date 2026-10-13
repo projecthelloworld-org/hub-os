@@ -68,33 +68,91 @@ function homePage(latest, versions) {
   <meta name="description" content="Install HubOS, the open-source operations layer for school connectivity.">
   <title>Install HubOS</title>
   <style>
-    :root{color-scheme:light;--ink:#193a32;--muted:#52665e;--line:#d6dfd7}
-    *{box-sizing:border-box}body{margin:0;background:#f5f5ee;color:var(--ink);font:17px/1.6 system-ui,sans-serif}
-    main{max-width:850px;margin:auto;padding:64px 24px}header{border-bottom:1px solid var(--line);padding-bottom:32px}
-    .brand{font-weight:750;font-size:24px;letter-spacing:-.6px}.version{float:right;font-size:14px;border:1px solid var(--line);padding:4px 12px;border-radius:30px}
-    h1{font-size:clamp(36px,6vw,54px);line-height:1.1;letter-spacing:-1.7px;margin:42px 0 18px}h2{font-size:23px;margin:36px 0 14px}
-    p{max-width:660px}a{color:var(--ink);text-underline-offset:4px}a:hover{color:#496d48}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--ink);color:#f6f8ef;padding:24px;border-radius:8px;font-size:15px}
-    .muted{color:var(--muted);font-size:15px}.links{display:flex;flex-wrap:wrap;gap:12px 28px}table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid var(--line)}footer{margin-top:48px;color:var(--muted);font-size:14px}
-    @media(max-width:500px){main{padding:32px 18px}pre{padding:18px}.version{float:none;display:inline-block;margin-left:16px}th,td{padding:10px 4px}}
+    :root{color-scheme:light;--cream:#faf7f2;--ink:#222;--orange:#e76031;--orange-dark:#a83d1b;--muted:#636464;--line:#22222229}
+    *{box-sizing:border-box}[hidden]{display:none!important}
+    body{margin:0;background:var(--cream);color:var(--ink);font:17px/1.6 Hellix,"DM Sans","Avenir Next","Helvetica Neue",Arial,sans-serif}
+    ::selection{background:var(--orange);color:var(--ink)}
+    main{max-width:900px;margin:auto;padding:52px 28px 36px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:28px}
+    .brand{display:inline-flex;align-items:center;gap:12px;color:var(--ink);text-decoration:none}.brand img{display:block;flex:none}.brand strong{display:block;font-size:25px;line-height:1.1;letter-spacing:-.025em}.brand small{display:block;margin-top:5px;color:var(--muted);font-size:12px;line-height:1.3}
+    .version{font-size:13px;border:1px solid var(--line);padding:6px 12px;border-radius:24px;white-space:nowrap;font-variant-numeric:tabular-nums}
+    h1{font-size:clamp(36px,5vw,56px);line-height:1.08;letter-spacing:-.035em;text-wrap:balance;margin:44px 0 20px}h2{font-size:24px;line-height:1.25;letter-spacing:-.02em;margin:0}
+    p{max-width:70ch;margin:0 0 20px}.lead{font-size:18px;line-height:1.65;max-width:66ch}
+    a{color:var(--orange-dark);text-underline-offset:4px;text-decoration-thickness:1px}a:hover{color:var(--ink)}
+    a:focus-visible,button:focus-visible,pre:focus-visible{outline:3px solid var(--orange-dark);outline-offset:5px}
+    section{margin-top:40px}.section-title{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:18px}
+    button{min-width:136px;min-height:44px;padding:10px 16px;border:1px solid transparent;border-radius:6px;background:var(--orange);color:var(--ink);font:inherit;font-size:14px;font-weight:700;line-height:1.4;cursor:pointer}
+    button:hover{background:var(--orange-dark);color:#fff}button:active{background:var(--ink);color:#fff}button:disabled{background:var(--cream);color:var(--muted);border-color:var(--line);cursor:wait}
+    pre{max-width:100%;margin:0;white-space:pre;overflow-x:auto;background:var(--ink);color:var(--cream);padding:22px 24px;border-radius:6px;font:14px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;scrollbar-color:var(--orange) var(--ink);scrollbar-width:thin}
+    pre::selection,pre ::selection{background:var(--orange);color:var(--ink)}
+    .copy-feedback{min-height:1.5em;margin:6px 0 8px;color:var(--muted);font-size:13px}.muted{color:var(--muted);font-size:15px}.install-note{margin-bottom:16px}
+    .links{display:flex;flex-wrap:wrap;gap:4px 26px;font-size:15px}.links a{display:inline-flex;align-items:center;min-height:44px}
+    .release-note{margin-top:14px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:13px 10px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{padding-left:0}th:last-child,td:last-child{padding-right:0}td a{display:inline-block;padding:4px 0}
+    footer{margin-top:44px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+    @media(max-width:500px){main{padding:28px 18px}header{gap:16px;padding-bottom:22px}h1{margin-top:34px}section{margin-top:32px}.section-title{align-items:flex-start;gap:14px}h2{font-size:22px}pre{padding:18px;font-size:13px}.lead{font-size:17px}th,td{padding:12px 6px}footer{margin-top:34px}}
   </style>
 </head>
 <body><main>
-  <header><span class="brand">HubOS</span><span class="version">Latest stable: ${htmlEscape(latest.tag)}</span></header>
+  <header>
+    <a class="brand" href="./" aria-label="HubOS home">
+      <img width="32" height="38" alt="" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2036%2042'%3e%3cpath%20fill='%23e76031'%20d='M23.03%200%200%20.21l.81%2020.08%202.53-.16%206.68%208.79-.12-8.7%2013.13-.1V0Zm-10.07%2014.59-.06-3.18-2.28.05.06%203.18-3.69.06-.15-9.4%203.69-.07.05%203.09%202.28-.04-.05-3.09%203.69-.06.15%209.4-3.69.06Z'/%3e%3cpath%20fill='%23e76031'%20d='m31.3%2021.8-6.68-8.79.12%208.7-13.14.1v20.11l23.04-.2.69-19.84-4.03-.08Zm-3.63%2014.83h-3.3l-1.34-5.18-1.32%205.17h-3.3l-2.37-9.08v-.07h3.36l1.04%204.77%201.03-4.77h3.27l1.04%204.77%201.03-4.77h3.21l-2.35%209.16Z'/%3e%3c/svg%3e">
+      <span><strong>HubOS</strong><small>Project Hello World</small></span>
+    </a>
+    <span class="version">Latest stable: ${htmlEscape(latest.tag)}</span>
+  </header>
   <h1>Keep school connectivity working.</h1>
-  <p>HubOS brings connectivity, power, devices, and support into a shared operational view. Run the open-source stack on your own infrastructure.</p>
-  <h2>Install from your terminal</h2>
-  <pre><code>${htmlEscape(command)}</code></pre>
-  <p class="muted">The interactive installer helps you choose credentials, checks Docker, and connects Metabase to PostgreSQL. This URL follows the latest stable release.</p>
-  <nav class="links" aria-label="HubOS resources">
-    <a href="https://github.com/${repository}/blob/main/docs/Installation.md">Installation guide</a>
-    <a href="${htmlEscape(latest.releaseUrl)}">Latest release</a>
-    <a href="https://github.com/${repository}">Source &amp; contributions</a>
-  </nav>
-  <h2>Versioned installers</h2>
-  <p class="muted">Choose a specific release when you need a consistent deployment version.</p>
-  <table><thead><tr><th scope="col">Version</th><th scope="col">Download</th><th scope="col">Details</th></tr></thead><tbody>${rows}</tbody></table>
+  <p class="lead">HubOS brings connectivity, power, devices, and support into a shared operational view. Run the open-source stack on your own infrastructure.</p>
+  <section aria-labelledby="install-heading">
+    <div class="section-title">
+      <h2 id="install-heading">Install from your terminal</h2>
+      <button id="copy-command" type="button" aria-describedby="copy-feedback" hidden>Copy command</button>
+    </div>
+    <pre tabindex="0" role="region" aria-label="Installation command"><code id="install-command">${htmlEscape(command)}</code></pre>
+    <p class="copy-feedback" id="copy-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+    <p class="muted install-note">The interactive installer helps you choose credentials, checks Docker, and connects Metabase to PostgreSQL. This URL follows the latest stable release.</p>
+    <nav class="links" aria-label="HubOS resources">
+      <a href="https://github.com/${repository}/blob/main/docs/Installation.md">Installation guide</a>
+      <a href="${htmlEscape(latest.releaseUrl)}">Latest release</a>
+      <a href="https://github.com/${repository}">Source &amp; contributions</a>
+    </nav>
+  </section>
+  <section aria-labelledby="releases-heading">
+    <h2 id="releases-heading">Versioned installers</h2>
+    <p class="muted release-note">Choose a specific release when you need a consistent deployment version.</p>
+    <table><thead><tr><th scope="col">Version</th><th scope="col">Download</th><th scope="col">Details</th></tr></thead><tbody>${rows}</tbody></table>
+  </section>
   <footer>Project Hello World · HubOS is released under the MIT License.</footer>
-</main></body></html>\n`;
+</main>
+<script>
+  const copyButton = document.getElementById("copy-command");
+  const command = document.getElementById("install-command");
+  const feedback = document.getElementById("copy-feedback");
+  copyButton.hidden = false;
+  copyButton.addEventListener("click", async () => {
+    copyButton.disabled = true;
+    copyButton.textContent = "Copying…";
+    feedback.textContent = "";
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(command.textContent);
+      copyButton.textContent = "Copied";
+      feedback.textContent = "Installation command copied.";
+    } catch {
+      copyButton.textContent = "Copy command";
+      feedback.textContent = "Copy unavailable. Select the command and copy it manually.";
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(command);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    } finally {
+      copyButton.disabled = false;
+    }
+  });
+</script>
+</body></html>\n`;
 }
 
 export async function buildPages({ outputDirectory = "dist/pages", fetchImpl = fetch, token = process.env.GITHUB_TOKEN } = {}) {
