@@ -212,6 +212,11 @@ export class PostgresStore {
     `;
     const targets = [];
     for (const source of sources) {
+      if (parseJsonValue(source.config).mapping_policy === 'canonical_site_ids') {
+        await this.db`INSERT INTO external_identifiers (source_connection_id, entity_type, entity_id, external_id, verified, mapping_method)
+          SELECT ${source.id}, 'site', id, id::text, true, 'owned_canonical_policy' FROM sites WHERE organisation_id = ${source.organisation_id}
+          ON CONFLICT (source_connection_id, entity_type, external_id) DO NOTHING`;
+      }
       const mappings = await this.db`
         SELECT ei.external_id, s.id AS site_id, s.site_code, s.is_demo
         FROM external_identifiers ei JOIN sites s ON s.id = ei.entity_id

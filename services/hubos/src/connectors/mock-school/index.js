@@ -39,7 +39,9 @@ export const mockSchoolConnector = {
           ['connectivity.packet_loss.percent', t.packet_loss_percent, 'percent']],
         power: [['power.battery.voltage', t.battery_voltage, 'V'], ['power.solar.output', t.solar_output_watts, 'W']],
         devices: [['devices.active.count', t.active_devices, 'count'],
-          ['devices.check_in.recent.count', t.active_devices, 'count'], ['devices.inventory.count', 20, 'count']],
+          ['devices.check_in.recent.count', profileFor(site.site_code).devices === 'degraded' ? 3 : 20, 'count'],
+          ['devices.inventory.count', 20, 'count'], ['devices.check_in.stale.count', profileFor(site.site_code).devices === 'degraded' ? 17 : 0, 'count'],
+          ['devices.check_in.unknown.count', 0, 'count']],
         survey: [['field.report.fault.count', site.site_code === 'AO-DEMO-05' ? 1 : 0, 'count']],
       };
       const records = definitions[raw.profile];

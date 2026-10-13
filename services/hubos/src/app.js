@@ -127,7 +127,9 @@ export function createApp({ store, config, resolveSecrets = resolveCredentials, 
         if (!connector?.webhook) throw Object.assign(new Error('Source has no webhook lifecycle'), { status: 422 });
         const normalized = await connector.webhook(await readJson(request), { ...target, config: target.source.config,
           credentials, observedAt: new Date() });
-        return withSecurity(json(await persistConnectorResult({ store, target, connector, normalized }), 202));
+        const result = await persistConnectorResult({ store, target, connector, normalized });
+        if (result.accepted || result.monitor_samples || result.signals) await store.markSourceCollected(target.source.id, new Date());
+        return withSecurity(json(result, 202));
       }
 
       return withSecurity(json({ error: "Not found" }, 404));

@@ -13,7 +13,7 @@
     "dev": "bun --watch run src/server.js",
     "worker": "bun run src/worker.js",
     "seed": "bun run src/seed.js",
-    "metabase:bootstrap": "bun run src/metabase/bootstrap.js",
+    "metabase:bootstrap": "bun run src/provision.js metabase-alerts",
     "kuma:bootstrap": "bun run src/provision.js uptime-kuma",
     "test": "bun test",
     "check": "bun run tools/check.js",

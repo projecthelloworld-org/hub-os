@@ -49,6 +49,7 @@ services:
     command: ["bun", "run", "metabase:bootstrap"]
     environment:
       METABASE_URL: http://metabase:3000
+      HUBOS_DEMO_MODE: "true"
       METABASE_SITE_NAME: HubOS Monitoring and Evaluation
       METABASE_ADMIN_FIRST_NAME: ${METABASE_ADMIN_FIRST_NAME:-HubOS}
       METABASE_ADMIN_LAST_NAME: ${METABASE_ADMIN_LAST_NAME:-Administrator}
@@ -58,9 +59,9 @@ services:
       METABASE_HUBOS_DB_HOST: db
       METABASE_HUBOS_DB_PORT: 5432
       METABASE_HUBOS_DB_NAME: ${POSTGRES_DB:-hubos}
-      METABASE_HUBOS_DB_USER: ${METABASE_HUBOS_DB_USER:-${POSTGRES_USER:-hubos}}
-      METABASE_HUBOS_DB_PASSWORD: ${METABASE_HUBOS_DB_PASSWORD:-${POSTGRES_PASSWORD:-hubos-local-only}}
-      METABASE_HUBOS_SCHEMAS: ${METABASE_HUBOS_SCHEMAS:-analytics,public}
+      METABASE_HUBOS_DB_USER: ${METABASE_HUBOS_DB_USER:-hubos_analytics}
+      METABASE_HUBOS_DB_PASSWORD: ${METABASE_HUBOS_DB_PASSWORD:-hubos-local-analytics-only}
+      METABASE_HUBOS_SCHEMAS: analytics
     depends_on:
       metabase:
         condition: service_healthy

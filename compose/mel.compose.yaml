@@ -1,4 +1,36 @@
 services:
+  metabase-bootstrap:
+    build:
+      context: ./services/hubos
+    image: hubos/core:local
+    command: ["bun", "run", "metabase:bootstrap"]
+    environment:
+      HUBOS_ENV: ${HUBOS_ENV:-development}
+      HUBOS_DATABASE_URL: ${HUBOS_DATABASE_URL:-postgresql://hubos:hubos-local-only@db:5432/hubos}
+      HUBOS_DEMO_MODE: ${HUBOS_DEMO_MODE:-false}
+      METABASE_URL: http://metabase:3000
+      METABASE_ADMIN_FIRST_NAME: ${METABASE_ADMIN_FIRST_NAME:-HubOS}
+      METABASE_ADMIN_LAST_NAME: ${METABASE_ADMIN_LAST_NAME:-Administrator}
+      METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL:-admin@hubos.local}
+      METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD:-hubos-local-admin-1}
+      METABASE_HUBOS_DB_HOST: db
+      METABASE_HUBOS_DB_NAME: ${POSTGRES_DB:-hubos}
+      METABASE_HUBOS_DB_USER: ${METABASE_HUBOS_DB_USER:-hubos_analytics}
+      METABASE_HUBOS_DB_PASSWORD: ${METABASE_HUBOS_DB_PASSWORD:-hubos-local-analytics-only}
+      METABASE_WEBHOOK_KEY: ${METABASE_WEBHOOK_KEY:-local-metabase-webhook-key}
+    depends_on:
+      metabase:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  api:
+    environment:
+      METABASE_WEBHOOK_KEY: ${METABASE_WEBHOOK_KEY:-local-metabase-webhook-key}
+
   metabase-db:
     image: postgres:16-alpine
     environment:

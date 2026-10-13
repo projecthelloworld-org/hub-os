@@ -1,3 +1,5 @@
+import { createMetabaseClient } from './client.js';
+
 function integer(value, fallback) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -15,10 +17,10 @@ export function loadMetabaseBootstrapConfig(env = process.env) {
     databaseHost: env.METABASE_HUBOS_DB_HOST ?? "db",
     databasePort: integer(env.METABASE_HUBOS_DB_PORT, 5432),
     database: env.METABASE_HUBOS_DB_NAME ?? env.POSTGRES_DB ?? "hubos",
-    databaseUser: env.METABASE_HUBOS_DB_USER ?? env.POSTGRES_USER ?? "hubos",
+    databaseUser: env.METABASE_HUBOS_DB_USER ?? "hubos_analytics",
     databasePassword:
-      env.METABASE_HUBOS_DB_PASSWORD ?? env.POSTGRES_PASSWORD ?? "hubos-local-only",
-    schemaPatterns: env.METABASE_HUBOS_SCHEMAS ?? "analytics,public",
+      env.METABASE_HUBOS_DB_PASSWORD ?? "hubos-local-analytics-only",
+    schemaPatterns: "analytics",
   });
 }
 
@@ -71,6 +73,9 @@ export async function bootstrapMetabase({
   config = loadMetabaseBootstrapConfig(),
   fetchImpl = fetch,
   logger = console,
+  onAuthenticated = null,
+  existingDatabaseId = null,
+  updateAnalyticsConnection = false,
 } = {}) {
   const propertiesResponse = await fetchImpl(`${config.url}/api/session/properties`, {
     headers: { accept: "application/json" },
@@ -95,8 +100,7 @@ export async function bootstrapMetabase({
       sessionId = body?.id;
       initializedNow = true;
     } else if (setupResponse.status !== 403) {
-      const reason = typeof body === "string" ? body : body?.message ?? body?.errors ?? "unknown error";
-      throw new Error(`Metabase setup failed with status ${setupResponse.status}: ${JSON.stringify(reason)}`);
+      throw new Error(`Metabase setup failed with status ${setupResponse.status}`);
     }
   }
 
@@ -110,7 +114,7 @@ export async function bootstrapMetabase({
     if (!sessionResponse.ok || !sessionBody?.id) {
       throw new Error(
         "Metabase already has an administrator. Set METABASE_ADMIN_EMAIL and " +
-          "METABASE_ADMIN_PASSWORD to that account, or recreate the local Metabase application volume.",
+          "METABASE_ADMIN_PASSWORD to that account. Existing accounts will not be reset.",
       );
     }
     sessionId = sessionBody.id;
@@ -123,9 +127,24 @@ export async function bootstrapMetabase({
   }
   const databaseBody = await databasesResponse.json();
   const databases = Array.isArray(databaseBody) ? databaseBody : databaseBody?.data ?? [];
-  if (databases.some((database) => database.name === config.databaseName)) {
+  const matches = databases.filter((database) => database.id === existingDatabaseId || (!existingDatabaseId && database.name === config.databaseName));
+  if (matches.length > 1) throw new Error('Ambiguous Metabase reporting database');
+  const client = createMetabaseClient({ url: config.url, sessionId, fetchImpl });
+  if (matches.length === 1) {
+    const databaseId = matches[0].id;
+    if (updateAnalyticsConnection) {
+      const current = await client(`/api/database/${databaseId}`);
+      if (current.engine !== 'postgres' || current.details.host !== config.databaseHost || current.details.dbname !== config.database) {
+        throw new Error('Metabase reporting database target changed; review configuration before provisioning');
+      }
+      await client(`/api/database/${databaseId}`, { method: 'PUT', body: { details: {
+        ...current.details, user: config.databaseUser, password: config.databasePassword,
+        'schema-filters-type': 'inclusion', 'schema-filters-patterns': 'analytics',
+      } } });
+    }
+    if (onAuthenticated) await onAuthenticated({ client, databaseId });
     logger.log(`Metabase already contains ${config.databaseName}; bootstrap made no changes`);
-    return { status: initializedNow ? "configured" : "already-configured" };
+    return { status: initializedNow ? "configured" : "already-configured", databaseId };
   }
 
   const databaseResponse = await fetchImpl(`${config.url}/api/database`, {
@@ -135,14 +154,10 @@ export async function bootstrapMetabase({
   });
   const databaseResult = await responseBody(databaseResponse);
   if (!databaseResponse.ok) {
-    const reason =
-      typeof databaseResult === "string"
-        ? databaseResult
-        : databaseResult?.message ?? databaseResult?.errors ?? "unknown error";
-    throw new Error(
-      `Metabase database connection failed with status ${databaseResponse.status}: ${JSON.stringify(reason)}`,
-    );
+    throw new Error(`Metabase database connection failed with status ${databaseResponse.status}`);
   }
+
+  if (onAuthenticated) await onAuthenticated({ client, databaseId: databaseResult.id });
 
   logger.log(`Configured Metabase and connected ${config.databaseName}`);
   return { status: "configured", databaseId: databaseResult?.id };

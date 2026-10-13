@@ -54,12 +54,12 @@ describe('trusted source-driven plugin runtime', () => {
     const observedAt = new Date();
     const run = () => runConnectorJob({ store, job, workerId: 'test-worker', observedAt, demoMode: true });
     const first = await run();
-    expect(first.accepted).toBe(90);
+    expect(first.accepted).toBe(110);
     // Reclaim the same scheduled job rather than bypassing the lease token.
     store.state.connectorJobs[0].next_run_at = new Date(0).toISOString();
     const again = await store.claimConnectorJob('test-worker', 300);
     const second = await runConnectorJob({ store, job: again, workerId: 'test-worker', observedAt, demoMode: true });
-    expect(second.duplicates).toBe(90);
+    expect(second.duplicates).toBe(110);
     expect(store.state.sites.filter((site) => site.country_code === 'UG')).toHaveLength(5);
     expect(new Set(store.state.sites.map((site) => site.site_type))).toEqual(new Set(['school', 'community_centre', 'library']));
     expect(store.state.rawPayloads).toHaveLength(40);

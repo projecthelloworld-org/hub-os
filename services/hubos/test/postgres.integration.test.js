@@ -55,9 +55,9 @@ suite('PostgreSQL source-driven runtime (isolated integration)', () => {
     expect(abandoned.status).toBe('failed');
     expect(abandoned.error).toBe('WORKER_LEASE_EXPIRED');
     const result = await runConnectorJob({ store, job: second, workerId: 'second-worker', demoMode: true });
-    expect(result.accepted).toBe(90);
+    expect(result.accepted).toBe(110);
     const [{ count }] = await store.db`SELECT count(*)::int AS count FROM analytics.telemetry`;
-    expect(count).toBe(150);
+    expect(count).toBe(170);
     const raw = await store.db`SELECT payload FROM raw_payloads LIMIT 1`;
     const payload = typeof raw[0].payload === 'string' ? JSON.parse(raw[0].payload) : raw[0].payload;
     expect(payload.schema_version).toBe('1.0');

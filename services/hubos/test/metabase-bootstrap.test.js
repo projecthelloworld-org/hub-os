@@ -69,7 +69,7 @@ describe("Metabase bootstrap", () => {
       throw new Error("Database should not be created again");
     };
     const result = await bootstrapMetabase({ config, fetchImpl, logger: { log() {} } });
-    expect(result).toEqual({ status: "already-configured" });
+    expect(result).toEqual({ status: "already-configured", databaseId: 2 });
     expect(requests).toHaveLength(3);
   });
 
@@ -81,7 +81,7 @@ describe("Metabase bootstrap", () => {
       return Response.json({ message: "Setup failed" }, { status: 400 });
     };
     expect(bootstrapMetabase({ config, fetchImpl, logger: { log() {} } })).rejects.toThrow(
-      "Setup failed",
+      "Metabase setup failed",
     );
   });
 

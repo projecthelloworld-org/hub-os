@@ -154,6 +154,14 @@ export class MemoryStore {
   }
 
   async listConnectorTargets(job) {
+    for (const source of this.state.sourceConnections.filter((source) => source.enabled && source.config?.mapping_policy === 'canonical_site_ids')) {
+      for (const site of this.state.sites.filter((site) => site.organisation_id === source.organisation_id)) {
+        if (!this.state.mappings.some((mapping) => mapping.source_connection_id === source.id && mapping.external_id === site.id && mapping.entity_type === 'site')) {
+          this.state.mappings.push({ id: randomId(), source_connection_id: source.id, entity_type: 'site', entity_id: site.id,
+            external_id: site.id, verified: true, mapping_method: 'owned_canonical_policy' });
+        }
+      }
+    }
     return clone(this.state.sourceConnections
       .filter((source) => source.enabled && source.status !== 'disabled' && source.plugin_id === job.connector_id
         && (!job.source_connection_id || source.id === job.source_connection_id))

@@ -60,7 +60,8 @@ describe("read API", () => {
     const sources = await (await request("/api/v1/source-connections")).json();
     const connectors = await (await request("/api/v1/connectors")).json();
     expect(sources.source_connections).toHaveLength(8);
-    expect(connectors.connectors[0].id).toBe("mock-school-telemetry");
+    expect(connectors.connectors.map((connector) => connector.id)).toContain("mock-school-telemetry");
+    expect(connectors.connectors.map((connector) => connector.id)).toContain("metabase-alerts");
   });
 
   test("builds an operator overview with the active incident", async () => {
