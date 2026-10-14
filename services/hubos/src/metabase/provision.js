@@ -109,7 +109,13 @@ export async function provisionMetabaseMonitoring({ store, env = process.env, fe
           const dashcards = definition.cards.map(([key, row, col, sizeX, sizeY], index) => {
             const card = cards.get(key);
             const query = card.resource.dataset_query;
-            const tags = Object.keys(query.native?.['template-tags'] ?? query.stages?.[0]?.['template-tags'] ?? {});
+            // Current Metabase returns normalized MBQL tags as an array. The
+            // names, not its numeric array indexes, identify dashboard filters.
+            const savedTags = query.native?.['template-tags'] ?? query.stages?.[0]?.['template-tags'] ?? {};
+            const tags = Array.isArray(savedTags) ? savedTags.map((tag) => tag.name) : Object.keys(savedTags);
+            if (tags.some((name) => !['site', 'country', 'date'].includes(name)) || new Set(tags).size !== tags.length) {
+              throw new CollectionError('METABASE_REPORT_PARAMETER_INVALID');
+            }
             return { id: -(index + 1), card_id: card.id, row, col, size_x: sizeX, size_y: sizeY, series: [],
               parameter_mappings: tags.map((name) => ({ parameter_id: `hubos-${name}`, card_id: card.id,
                 target: ['dimension', ['template-tag', name]] })) };

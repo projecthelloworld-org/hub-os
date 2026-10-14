@@ -126,7 +126,14 @@ suite('Native Metabase dashboards, filters and alert routing (disposable fixture
     const firstDashboard = await client(`/api/dashboard/${first.dashboards[0]}`);
     expect(firstDashboard.dashcards).toHaveLength(dashboards[0].cards.length);
     expect(firstDashboard.parameters.find((p) => p.slug === 'date').default).toBe('past30days~');
-    for (const card of firstDashboard.dashcards) expect(card.parameter_mappings).toHaveLength(3);
+    for (const id of first.dashboards) {
+      const dashboard = await client(`/api/dashboard/${id}`);
+      for (const card of dashboard.dashcards) {
+        const names = card.card.name === 'Monitoring infrastructure — current reachability' ? ['date'] : ['site', 'country', 'date'];
+        expect(card.parameter_mappings).toEqual(names.map((name) => ({ parameter_id: `hubos-${name}`,
+          card_id: card.card.id, target: ['dimension', ['template-tag', name]] })));
+      }
+    }
     await client(`/api/dashboard/${firstDashboard.id}`, { method: 'PUT', body: { name: 'Operator customised operations' } });
     const genericCard = await resource('card', 'plugin-telemetry');
     await client(`/api/card/${genericCard}`, { method: 'PUT', body: { name: 'Operator customised telemetry' } });
