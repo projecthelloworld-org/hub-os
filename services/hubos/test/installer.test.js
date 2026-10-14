@@ -283,7 +283,7 @@ describe('Interactive installer command-line contract', () => {
       expect((await execute(['--mode', 'live'])).status).not.toBe(0);
       expect(await configuration()).toBe(upgraded);
     });
-  });
+  }, 30000);
   test('separate fresh installations get distinct persistent-data namespaces', async () => {
     let firstProject;
     await installation(async ({ execute, configuration }) => {

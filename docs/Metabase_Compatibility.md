@@ -30,6 +30,8 @@ Metabase's API is unversioned and may change. Use the deployed instance's `/api/
 
 Direct saved-question queries in 64.1 require each supplied filter parameter to include a nonblank `id`, alongside its type, target and value. Use the saved question's template-tag ID, not an unrelated dashboard parameter ID. HubOS declares stable tag IDs for its provisioned questions. See the [card-query endpoint](https://github.com/metabase/metabase/blob/v0.64.1.7/src/metabase/queries_rest/api/card.clj) and [official template-tag parameter mapping](https://github.com/metabase/metabase/blob/v0.64.1.7/frontend/src/metabase-lib/v1/parameters/utils/template-tags.ts).
 
+Saved native questions in 64.1 can be returned as normalized MBQL stages with an array of template tags. Dashboard mappings must use each tag's `name`, not the array's numeric indexes. HubOS accepts both the authored native-query tag object and the normalized stage format. Native checks verify exact site/country/date mappings, and browser checks exercise the resulting controls. Metabase remembers an operator's filter selections across sessions; clear them or provide explicit URL values when comparing scenarios.
+
 The 64.1 HTTP-channel schema accepts `type: "channel/http"`, a nonblank name, optional description/active values, and these details:
 
 ```json

@@ -90,6 +90,8 @@ Fixtures use explicit project names, guarded endpoints, isolated volumes and pub
 - `services/hubos/test/installer.integration.test.js`: the real installer on fresh private storage, followed by repeat setup with retained accounts, a live fixture site and an operator-customized dashboard. It creates a tracked source copy and a separate image tag; it does not reuse an existing deployment.
 - `services/hubos/test/backup.integration.test.js`: a maintenance-paused snapshot of that disposable installer, fresh-volume restoration, retained site/tool identities and graceful cancellation. The original fixture is preserved; the target must have no retained containers or volumes.
 - `services/hubos/test/package-upgrade.integration.test.js`: published v0.1.0 artifacts verified against immutable checksums, followed by an actual piped HTTPS installer upgrade to a sealed candidate. It checks retained identities, observations, mappings, accounts, operator-owned Metabase resources and new monitor/dashboard provisioning.
+- `services/hubos/test/package-demo.integration.test.js`: fresh and repeat piped HTTPS demonstration installation, mixed synthetic sites, named dashboard-filter mappings and retained operator customizations.
+- `services/hubos/test/metabase.browser.integration.test.js`: rendered dashboard controls, charts/tables and desktop/mobile layouts against that synthetic package. It uses an isolated browser session, not a contributor's existing browser profile.
 
 The [CI workflow](../.github/workflows/ci.yml) provides reproducible commands and the environment settings for each suite. Test output belongs in the pull request or CI artifacts; never attach private deployment configuration or source credentials.
 
@@ -113,6 +115,19 @@ To test recovery afterward, set `HUBOS_TEST_BACKUP_SOURCE_DIR` to that suite's t
 For the package upgrade rehearsal, set `HUBOS_TEST_PACKAGE_PROJECT=hubos-v02-package-test` and run `bun test test/package-upgrade.integration.test.js` from `services/hubos`. This guarded namespace must have no containers or retained volumes. It uses loopback ports 19280, 19281, 19282, 19285 and 19494, isolated application image names and synthetic data only. Its temporary package server uses a test certificate trusted only by the fixture's curl process; host certificate trust is unchanged.
 
 The legacy fixture restores the public file permissions recorded in the original archive before building its unchanged runtime, because v0.1.0's private extraction mask can leave source files unreadable to non-root containers. Only fixture namespaces, image names and source permissions are adjusted; published artifacts are never replaced. The candidate package retains the source version until release verification is complete. Applications are stopped after the test, with private fixture configuration/data retained for explicit inspection or cleanup.
+
+For a fresh demonstration-package rehearsal, set `HUBOS_TEST_DEMO_PACKAGE_PROJECT=hubos-v02-demo-package-test` and run `bun test test/package-demo.integration.test.js`. This project must have no containers or retained volumes; loopback ports 19380, 19381, 19382, 19385 and 19495 must be available. The test uses tracked source from the current commit, a sealed archive and a temporary HTTPS certificate trusted only by its curl process. It retains private configuration/data and stops the applications afterward.
+
+For the dashboard browser checks, restart only that fixture's services from its printed temporary installation directory:
+
+```sh
+docker compose -p hubos-v02-demo-package-test \
+  -f compose.yaml -f compose/mel.compose.yaml \
+  -f compose/monitoring.compose.yaml -f compose/development.compose.yaml \
+  start db metabase-db api worker metabase kuma caddy mailpit
+```
+
+Install Chromium as described above, then run `HUBOS_TEST_METABASE_BROWSER_URL=http://127.0.0.1:19381/ bun test test/metabase.browser.integration.test.js` from the source checkout's `services/hubos` directory. Do not substitute a real deployment address or account. The browser suite checks the preserved custom dashboard title as well as the other three provisioned dashboards. Its screenshots contain only fictional evidence and are excluded from source control.
 
 The native Metabase suite starts an ephemeral HubOS receiver on its own private Compose network. Set `HUBOS_TEST_METABASE_PROJECT` to the guarded fixture project name. This exercises the same private webhook destination as an installation without relying on host-gateway aliases or weakening Metabase's network policy.
 
