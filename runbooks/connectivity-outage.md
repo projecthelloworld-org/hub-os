@@ -11,10 +11,10 @@ Use this runbook when a configured site-perspective connectivity check is persis
 ## Triage
 
 1. Confirm whether the evidence is fresh or the monitoring path is stale.
-2. Compare WAN, power, controller, and access-point status.
+2. Compare any available WAN, power, controller and access-point evidence. HubOS may not have all of these sources configured; use the relevant upstream tools or a safe local check where evidence is missing.
 3. Check whether other community sites using the same controller or ISP are affected.
 4. If power is degraded, follow the approved power-system runbook before network changes.
-5. If power is healthy and the WAN is down, contact the ISP using the mapped subscriber reference.
+5. If power is healthy and the WAN is down, contact the ISP using the deployment's private support records. ISP imports are not part of v0.2.0; do not assume HubOS contains a subscriber reference.
 6. If the WAN is healthy but Wi-Fi is down, check the gateway, switch, and access-point chain.
 
 ## Resolution evidence

@@ -47,6 +47,13 @@ suite('Fresh full installer with real applications (owned isolated fixture)', ()
       throw new Error('Full installer test requires a fresh isolated project with no retained volumes');
     }
     directory = await mkdtemp(join(tmpdir(), 'hubos-installer-native-'));
+    if (process.env.HUBOS_TEST_INSTALLER_RESULT_FILE) {
+      const path = resolve(process.env.HUBOS_TEST_INSTALLER_RESULT_FILE);
+      if (path !== join(tmpdir(), 'hubos-ci-installer-directory.txt') || project !== 'hubos-ci-installer-test') {
+        throw new Error('Installer fixture path output is reserved for isolated CI');
+      }
+      await writeFile(path, directory + '\n', { flag: 'wx', mode: 0o600 });
+    }
     console.log('Owned installer fixture directory:', directory);
     // Only tracked public files are copied. Never copy a user's private .env/plugins.
     const archive = Bun.spawn(['git', 'archive', 'HEAD'], { cwd: root, stdout: 'pipe', stderr: 'ignore' });

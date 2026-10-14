@@ -196,7 +196,7 @@ jobs:
 
   installer:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -209,12 +209,23 @@ jobs:
         working-directory: services/hubos
         env:
           HUBOS_TEST_INSTALLER_PROJECT: hubos-ci-installer-test
+          HUBOS_TEST_INSTALLER_RESULT_FILE: /tmp/hubos-ci-installer-directory.txt
+      - name: Verify consistent backup and isolated restoration of actual applications
+        run: |
+          export HUBOS_TEST_BACKUP_SOURCE_DIR="$(cat /tmp/hubos-ci-installer-directory.txt)"
+          bun test test/backup.integration.test.js
+        working-directory: services/hubos
+        env:
+          HUBOS_TEST_BACKUP_PROJECT: hubos-ci-installer-test
+          HUBOS_TEST_RECOVERY_PROJECT: hubos-ci-recovery-test
       - name: Report only owned installer service state
         if: failure()
         run: docker ps -a --filter label=com.docker.compose.project=hubos-ci-installer-test --format '{{.Names}} {{.Status}}'
       - name: Clean only disposable installer services and storage
         if: always()
-        run: docker compose -p hubos-ci-installer-test -f compose.yaml -f compose/mel.compose.yaml -f compose/monitoring.compose.yaml down --volumes
+        run: |
+          docker compose -p hubos-ci-installer-test -f compose.yaml -f compose/mel.compose.yaml -f compose/monitoring.compose.yaml down --volumes
+          docker compose -p hubos-ci-recovery-test -f compose.yaml -f compose/mel.compose.yaml -f compose/monitoring.compose.yaml down --volumes
 
   sbom:
     runs-on: ubuntu-latest

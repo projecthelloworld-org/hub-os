@@ -4,7 +4,7 @@ Use an isolated source checkout and fictional data to contribute to HubOS. Do no
 
 ## Tools and checks
 
-Use the Bun version pinned by CI/container packaging, a running Docker engine and Compose 2.24 or later. No host PostgreSQL or Java installation is needed for container-based application fixtures.
+Use the Bun version pinned by CI/container packaging, a running Docker engine and Compose 2.24.4 or later. No host PostgreSQL or Java installation is needed for container-based application fixtures.
 
 ```sh
 make install
@@ -48,6 +48,7 @@ The demonstration contains five Ugandan and five Angolan sites, mixing schools, 
 | `compose/mel.compose.yaml` | Metabase and its application database/provisioning |
 | `compose/monitoring.compose.yaml` | Kuma, provisioning and notification configuration |
 | `compose/development.compose.yaml` | Fictional seed data and local email capture |
+| `compose/tls.compose.yaml` | HTTPS operator origin, certificate provisioning and HTTP redirects |
 | `compose/ecosystem.compose.yaml` | Optional upstream Headwind and ODK applications |
 
 The standard demonstration command merges core, analytics, monitoring and demonstration layers. Redis containers belonging to ODK's Enketo subsystem are not a HubOS core dependency.
@@ -86,10 +87,13 @@ Fixtures use explicit project names, guarded endpoints, isolated volumes and pub
 - `compose/access-test.compose.yaml`: actual HubOS API behind authenticated Caddy.
 - `compose/tls-test.compose.yaml` with the access and TLS layers: hostname-verified HTTPS, certificate trust failure, HTTP redirects and operator-origin checks. It uses an isolated local CA and never changes host trust or public DNS.
 - `services/hubos/test/installer.integration.test.js`: the real installer on fresh private storage, followed by repeat setup with retained accounts, a live fixture site and an operator-customized dashboard. It creates a tracked source copy and a separate image tag; it does not reuse an existing deployment.
+- `services/hubos/test/backup.integration.test.js`: a maintenance-paused snapshot of that disposable installer, fresh-volume restoration, retained site/tool identities and graceful cancellation. The original fixture is preserved; the target must have no retained containers or volumes.
 
-The [CI workflow](../.github/workflows/ci.yml) is the reproducible command reference. Keep test fixtures and credentials inside test tooling; user guides should explain supported operation, not recount individual runs.
+The [CI workflow](../.github/workflows/ci.yml) provides reproducible commands and the environment settings for each suite. Test output belongs in the pull request or CI artifacts; never attach private deployment configuration or source credentials.
 
 For the native installer rehearsal, set `HUBOS_TEST_INSTALLER_PROJECT=hubos-v02-installer-live-test` and run `bun test test/installer.integration.test.js` from `services/hubos`. The guarded project must have no containers or retained volumes, and loopback ports 19080, 19081, 19082 and 19085 must be available. The suite stops its applications afterward and retains its private configuration/data for diagnostics. Explicitly clean only that disposable project before another fresh rehearsal. This test covers a source installation; a sealed release archive and v0.1.0 package upgrade require their own release checks.
+
+To test recovery afterward, set `HUBOS_TEST_BACKUP_SOURCE_DIR` to that suite's temporary installation directory and run `bun test test/backup.integration.test.js`. Only its explicitly owned project is accepted. The restore target uses `hubos-v02-recovery-test` and loopback ports 19180, 19181, 19182 and 19185; it must start with no retained storage. Private backups stay in temporary storage and must never be uploaded as CI artifacts.
 
 The native Metabase suite starts an ephemeral HubOS receiver on its own private Compose network. Set `HUBOS_TEST_METABASE_PROJECT` to the guarded fixture project name. This exercises the same private webhook destination as an installation without relying on host-gateway aliases or weakening Metabase's network policy.
 

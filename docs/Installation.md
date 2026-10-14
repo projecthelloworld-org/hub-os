@@ -85,6 +85,8 @@ Before an upgrade, preserve:
 
 Restore rehearsal must use fresh isolated volumes, not the running installation. Preserve tool encryption secrets and use matching images when restoring. Follow [Metabase upgrade/rollback guidance](Metabase_Compatibility.md); do not attach an experimental version to an original database.
 
+The source tree's [backup and restore guide](Backup_and_Restore.md) describes core snapshots, Kuma's maintenance pause and recovery into a distinct, stopped deployment. Optional ODK and Headwind data require separate upstream backups.
+
 ## Remote exposure
 
 Keep direct tool/database ports private. Remote access needs verified TLS, deliberate DNS/listener configuration, strong credentials, reviewed firewall exposure and a tested recovery plan. [The access guide](Security_and_Access.md) explains the trusted boundary and its limitations.

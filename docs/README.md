@@ -7,6 +7,7 @@ HubOS helps people monitor and support connectivity at community sites. Use the 
 - [Install HubOS](Installation.md): terminal installation, configuration and upgrades.
 - [Understand monitoring and alerts](Monitoring_and_Alerts.md): dashboards, evidence quality, uptime coverage and incidents.
 - [Secure operator and machine access](Security_and_Access.md): credentials, private bindings, TLS and deployment responsibilities.
+- [Back up and restore](Backup_and_Restore.md): consistent core snapshots, isolated recovery and optional-application boundaries.
 - [Respond to a connectivity outage](../runbooks/connectivity-outage.md): safe triage and recovery evidence.
 
 ## Connect systems

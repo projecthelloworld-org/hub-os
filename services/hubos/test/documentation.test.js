@@ -36,4 +36,12 @@ describe('Public project documentation', () => {
     expect(documents.find(({ file }) => file === 'SECURITY.md').content).toContain('mailto:data@projecthelloworld.org');
     expect(documents.find(({ file }) => file === 'docs/Metabase_Compatibility.md').content).toContain('GHSA-vwf4-m7j8-wcjf');
   });
+  test('setup requirements and outage guidance do not imply unavailable integrations', () => {
+    for (const file of ['docs/Installation.md', 'docs/Local_Development.md', 'docs/Connector_Plugins.md']) {
+      expect(documents.find((document) => document.file === file).content).toContain('2.24.4 or later');
+    }
+    const runbook = documents.find(({ file }) => file === 'runbooks/connectivity-outage.md').content;
+    expect(runbook).toContain('ISP imports are not part of v0.2.0');
+    expect(runbook).toContain('where evidence is missing');
+  });
 });

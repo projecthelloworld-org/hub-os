@@ -1,6 +1,8 @@
 .DS_Store
 .env
 .hubos-credentials
+.hubos-recovery.lock/
+.hubos-restore.json
 config/kuma/monitors.json
 config/plugins/local.json
 config/source-secrets.env

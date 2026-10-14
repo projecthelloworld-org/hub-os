@@ -20,6 +20,9 @@ async function installation(run) {
     await writeFile(join(bin, 'docker'), `#!${process.execPath}\nimport ${JSON.stringify(dockerFixture)};\n`, { mode: 0o755 });
     await writeFile(join(bin, 'lsof'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     await writeFile(join(bin, 'curl'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    // Resource checks are a system boundary too: command-contract tests must
+    // not depend on how much disk space the contributor's computer has left.
+    await writeFile(join(bin, 'df'), '#!/bin/sh\nprintf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 41943040 10485760 %s 25%% /fixture\\n" "${INSTALLER_FIXTURE_AVAILABLE_KB:-31457280}"\n', { mode: 0o755 });
     const execute = async (options = [], extraEnvironment = {}, start = false) => {
       const process = Bun.spawn(['bash', join(directory, 'install.sh'), '--non-interactive', '--yes', ...(start ? [] : ['--no-start']), ...options], {
         cwd: directory, env: { PATH: `${bin}:${globalThis.process.env.PATH}`, LC_ALL: 'C',
@@ -33,6 +36,14 @@ async function installation(run) {
 }
 
 describe('Interactive installer command-line contract', () => {
+  test('insufficient disk space is rejected before deployment credentials are written', async () => {
+    await installation(async ({ directory, execute }) => {
+      const result = await execute(['--mode', 'live'], { INSTALLER_FIXTURE_AVAILABLE_KB: '1024' });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('at least 5 GB free');
+      expect(await Bun.file(join(directory, '.env')).exists()).toBe(false);
+    });
+  });
   test('a new live installation explicitly disables fictional data collection', async () => {
     await installation(async ({ execute, configuration }) => {
       const result = await execute(['--mode', 'live']);
