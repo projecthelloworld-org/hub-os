@@ -294,6 +294,15 @@ ensure_dependencies() {
   docker_ready || die "Docker was installed but is not usable by this account. Log out and back in after adding Docker group access, or rerun with suitable privileges."
 }
 
+ensure_compose_version() {
+  local version major minor patch
+  version=$(docker compose version --short)
+  [[ "$version" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]] || die "Cannot identify the Docker Compose version. Compose 2.24.4 or later is required."
+  major=${BASH_REMATCH[1]}; minor=${BASH_REMATCH[2]}; patch=${BASH_REMATCH[3]}
+  (( major > 2 || (major == 2 && (minor > 24 || (minor == 24 && patch >= 4))) )) \
+    || die "Docker Compose 2.24.4 or later is required for safe port-list overrides."
+}
+
 check_capacity() {
   local available_kb required_kb=5242880
   [[ "$PROFILE" == ecosystem ]] && required_kb=15728640
@@ -339,6 +348,7 @@ wait_for_setup() {
     if (( ready )); then
       local address="http://127.0.0.1:$hubos_port"
       [[ "$bind_address" != ::1 ]] || address="http://[::1]:$hubos_port"
+      [[ "$tls_enabled" != true ]] || address="$site_address"
       if curl --fail --silent --show-error --max-time 10 "$address/readyz" >/dev/null 2>&1; then
         ok "Application health and provisioning completed."
         return
@@ -364,6 +374,7 @@ cd "$INSTALL_DIR"
 [[ -f compose.yaml && -f compose/mel.compose.yaml && -f compose/monitoring.compose.yaml ]] || die "$INSTALL_DIR is not a HubOS monitoring release."
 
 ensure_dependencies
+ensure_compose_version
 check_capacity
 
 EXISTING_CONFIG=0
@@ -404,6 +415,8 @@ if (( ! EXISTING_CONFIG )); then
 fi
 
 bind_address=${HUBOS_BIND_ADDRESS:-127.0.0.1}
+site_address=${HUBOS_SITE_ADDRESS:-:80}
+https_port=${HUBOS_HTTPS_PORT:-443}
 hubos_port=${HUBOS_HTTP_PORT:-8080}
 metabase_port=${METABASE_PORT:-3001}
 kuma_port=${KUMA_PORT:-3002}
@@ -417,6 +430,8 @@ metabase_site_url=${METABASE_SITE_URL:-http://localhost:$metabase_port}
 
 if (( EXISTING_CONFIG )); then
   bind_address=$(read_dotenv HUBOS_BIND_ADDRESS "$bind_address")
+  site_address=$(read_dotenv HUBOS_SITE_ADDRESS "$site_address")
+  https_port=$(read_dotenv HUBOS_HTTPS_PORT "$https_port")
   hubos_port=$(read_dotenv HUBOS_HTTP_PORT "$hubos_port")
   metabase_port=$(read_dotenv METABASE_PORT "$metabase_port")
   kuma_port=$(read_dotenv KUMA_PORT "$kuma_port")
@@ -427,7 +442,11 @@ if (( EXISTING_CONFIG )); then
   admin_password="(preserved in .env)"
 elif (( INTERACTIVE )); then
   info "Configuration (press Enter to accept the value shown)."
-  bind_address=$(prompt "Bind address (127.0.0.1 is local-only; use 0.0.0.0 for a LAN/server)" "$bind_address")
+  bind_address=$(prompt "Operator bind address (127.0.0.1 is private; remote access requires HTTPS)" "$bind_address")
+  if [[ "$bind_address" != 127.0.0.1 && "$bind_address" != ::1 && "$bind_address" != localhost || "$site_address" != :80 ]]; then
+    site_address=$(prompt "Operator HTTPS origin (for example https://monitoring.example.org)" "$site_address")
+  fi
+  if [[ "$site_address" != :80 && -z "${HUBOS_HTTP_PORT:-}" ]]; then hubos_port=80; fi
   hubos_port=$(prompt "HubOS port" "$hubos_port")
   metabase_port=$(prompt "Metabase port" "$metabase_port")
   kuma_port=$(prompt "Uptime Kuma port" "$kuma_port")
@@ -440,10 +459,32 @@ elif (( INTERACTIVE )); then
   kuma_user=$(prompt "Uptime Kuma administrator username" "$kuma_user")
 fi
 
+tls_enabled=false
+if [[ "$site_address" != :80 ]]; then
+  [[ "$site_address" =~ ^https://([A-Za-z0-9-]+\.)*[A-Za-z0-9-]+(:([0-9]+))?$ ]] || die "HUBOS_SITE_ADDRESS must be a credential-free HTTPS origin, with no trailing slash, path, query or fragment."
+  origin_port=${BASH_REMATCH[3]:-443}
+  if [[ -n "${HUBOS_HTTPS_PORT:-}" || "$EXISTING_CONFIG" == 1 ]] && [[ "$https_port" != "$origin_port" ]]; then
+    die "HUBOS_HTTPS_PORT must match the HTTPS origin's port."
+  fi
+  https_port=$origin_port
+  validate_port HUBOS_HTTPS_PORT "$https_port"
+  [[ -f compose/tls.compose.yaml ]] || die "HTTPS Compose configuration is missing."
+  COMPOSE_FILES+=(-f compose/tls.compose.yaml)
+  tls_enabled=true
+  if (( ! EXISTING_CONFIG && ! INTERACTIVE )) && [[ -z "${HUBOS_HTTP_PORT:-}" ]]; then hubos_port=80; fi
+elif [[ "$bind_address" != 127.0.0.1 && "$bind_address" != ::1 && "$bind_address" != localhost ]]; then
+  die "Remote operator bindings require an explicit HTTPS HUBOS_SITE_ADDRESS."
+fi
+operator_address="http://localhost:$hubos_port"
+[[ "$tls_enabled" != true ]] || operator_address="$site_address"
+
 validate_port HUBOS_HTTP_PORT "$hubos_port"
 validate_port METABASE_PORT "$metabase_port"
 validate_port KUMA_PORT "$kuma_port"
 validate_port MAILPIT_WEB_PORT "$mailpit_port"
+if [[ "$tls_enabled" == true ]]; then
+  [[ "$https_port" != "$hubos_port" && "$https_port" != "$metabase_port" && "$https_port" != "$kuma_port" && "$https_port" != "$mailpit_port" ]] || die "HTTPS needs a separate port."
+fi
 [[ "$hubos_port" != "$metabase_port" && "$hubos_port" != "$mailpit_port" && "$metabase_port" != "$mailpit_port" ]] || die "HubOS, Metabase, and Mailpit must use different ports."
 [[ "$kuma_port" != "$hubos_port" && "$kuma_port" != "$metabase_port" && "$kuma_port" != "$mailpit_port" ]] || die "Uptime Kuma needs a separate port."
 [[ "$admin_email" == *@*.* ]] || die "Enter a valid Metabase administrator email."
@@ -501,7 +542,8 @@ HUBOS_ADMIN_KEY=$(env_escape "$admin_key")
 HUBOS_OPERATOR_CONSOLE_ENABLED=true
 HUBOS_OPERATOR_USERNAME=$(env_escape "$operator_user")
 HUBOS_OPERATOR_PASSWORD_HASH='$operator_hash'
-HUBOS_SITE_ADDRESS=:80
+HUBOS_SITE_ADDRESS=$(env_escape "$site_address")
+HUBOS_HTTPS_PORT=$https_port
 
 POSTGRES_DB=hubos
 POSTGRES_USER=hubos
@@ -556,7 +598,8 @@ else
   fi
   add_missing_setting HUBOS_OPERATOR_USERNAME "$operator_user"
   add_missing_setting COMPOSE_PROJECT_NAME "$project_name"
-  add_missing_setting HUBOS_SITE_ADDRESS ':80'
+  add_missing_setting HUBOS_SITE_ADDRESS "$site_address"
+  add_missing_setting HUBOS_HTTPS_PORT "$https_port"
   add_missing_setting HUBOS_ENV "$runtime_environment"
   add_missing_setting HUBOS_INGEST_KEY "${HUBOS_INGEST_KEY:-$(random_secret 32)}"
   add_missing_setting HUBOS_ADMIN_KEY "${HUBOS_ADMIN_KEY:-$(random_secret 32)}"
@@ -602,7 +645,7 @@ HubOS is configured.
 
   Installation: $INSTALL_DIR
   Data namespace: $project_name
-  HubOS:        http://localhost:$hubos_port
+  HubOS:        $operator_address
   Metabase:     http://localhost:$metabase_port
   Uptime Kuma:  http://localhost:$kuma_port
   Alert inbox:  http://localhost:$mailpit_port

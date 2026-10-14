@@ -10,6 +10,7 @@ state.sourceConnections.push({ id: stableId('source', 'access-fixture-kuma'), or
   is_demo: true, config: { adapter_version: '2.5.6', credential_refs: { webhookKey: 'env:ACCESS_FIXTURE_WEBHOOK_KEY' } },
   poll_interval_seconds: 60, freshness_seconds: 300 });
 const app = createApp({ store: new MemoryStore(state), config: loadConfig({ HUBOS_ENV: 'test', HUBOS_DEMO_MODE: 'true',
+  HUBOS_SITE_ADDRESS: process.env.HUBOS_SITE_ADDRESS, HUBOS_TLS_ENABLED: process.env.HUBOS_TLS_ENABLED,
   HUBOS_INGEST_KEY: 'fixture-only-ingest-key', HUBOS_ADMIN_KEY: 'fixture-only-admin-key' }),
   resolveSecrets: async () => ({ webhookKey: 'fixture-only-webhook-key' }) });
 Bun.serve({ hostname: '0.0.0.0', port: 3000, fetch: async (request) => {

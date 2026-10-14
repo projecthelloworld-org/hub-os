@@ -1,0 +1,6 @@
+# Local optional deployment; publish remote Central through reviewed upstream TLS.
+services:
+  nginx:
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:-8182}:80"
+      - "127.0.0.1:${HTTPS_PORT:-8443}:443"

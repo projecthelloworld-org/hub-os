@@ -84,6 +84,7 @@ Fixtures use explicit project names, guarded endpoints, isolated volumes and pub
 - `compose/headwind-test.compose.yaml`: Community inventory, check-in clocks and reader permissions.
 - `compose/odk-test.compose.yaml`: API-only Central, approved OData, reader permissions and upstream form validation.
 - `compose/access-test.compose.yaml`: actual HubOS API behind authenticated Caddy.
+- `compose/tls-test.compose.yaml` with the access and TLS layers: hostname-verified HTTPS, certificate trust failure, HTTP redirects and operator-origin checks. It uses an isolated local CA and never changes host trust or public DNS.
 - `services/hubos/test/installer.integration.test.js`: the real installer on fresh private storage, followed by repeat setup with retained accounts, a live fixture site and an operator-customized dashboard. It creates a tracked source copy and a separate image tag; it does not reuse an existing deployment.
 
 The [CI workflow](../.github/workflows/ci.yml) is the reproducible command reference. Keep test fixtures and credentials inside test tooling; user guides should explain supported operation, not recount individual runs.

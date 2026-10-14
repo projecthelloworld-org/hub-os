@@ -1,0 +1,19 @@
+# Private, local-CA transport fixture; not a production certificate configuration.
+services:
+  api:
+    environment:
+      HUBOS_SITE_ADDRESS: https://hubos.test:19443
+  caddy:
+    ports: !override
+      - 127.0.0.1:19440:80
+      - 127.0.0.1:19443:19443
+    environment:
+      HUBOS_SITE_ADDRESS: https://hubos.test:19443
+    volumes:
+      - ../config/caddy/TLS_Test_Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../config/caddy/Caddyfile:/etc/caddy/hubos.caddy:ro
+      - tls-fixture-data:/data
+      - tls-fixture-config:/config
+volumes:
+  tls-fixture-data:
+  tls-fixture-config:

@@ -12,7 +12,7 @@ HubOS provides an interactive terminal installer and a modular Docker Compose en
 - Git when fetching optional upstream ODK/Headwind deployments.
 - A person responsible for credentials, source access, updates and restoration.
 
-The installer does not install Docker silently. Supported Ubuntu/Debian installation requires approval; on macOS, install and start your chosen Docker application first. Compose 2.24 or later is required by the optional environment-file configuration used by the source stack.
+The installer does not install Docker silently. Supported Ubuntu/Debian installation requires approval; on macOS, install and start your chosen Docker application first. Compose 2.24.4 or later is required by the source stack's explicit port-list overrides.
 
 ## Stable one-command installation
 
@@ -88,6 +88,21 @@ Restore rehearsal must use fresh isolated volumes, not the running installation.
 ## Remote exposure
 
 Keep direct tool/database ports private. Remote access needs verified TLS, deliberate DNS/listener configuration, strong credentials, reviewed firewall exposure and a tested recovery plan. [The access guide](Security_and_Access.md) explains the trusted boundary and its limitations.
+
+For a fresh v0.2.0 source deployment, configure a deployment hostname distinct from the public installer domain. Point its A/AAAA records to your server, allow inbound TCP 80/443 to Caddy and allow certificate-authority access. Then configure the operator origin and listeners during interactive setup, or provide non-secret settings:
+
+```sh
+HUBOS_SITE_ADDRESS=https://monitoring.example.org \
+HUBOS_BIND_ADDRESS=0.0.0.0 \
+HUBOS_HTTP_PORT=80 HUBOS_HTTPS_PORT=443 \
+./install.sh --mode live
+```
+
+The installer selects `compose/tls.compose.yaml`, rejects malformed origins or mismatched listener ports, and waits for a certificate-verified HTTPS readiness response. `--no-start` does not prove that DNS or certificates work. Existing installations preserve their settings; review and change only the relevant network settings in `.env` before rerunning setup, without rotating persistent credentials.
+
+The TLS layer publishes Caddy's HTTP redirect and HTTPS listener. Metabase, Kuma, Mailpit and optional Headwind/ODK host ports remain on loopback; setting `HUBOS_BIND_ADDRESS` does not make those applications public. Use a secure tunnel for administration, or a separately reviewed upstream HTTPS deployment. Never disable certificate verification to bypass a provisioning failure.
+
+[Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https) describes certificate issuance, renewal, DNS and externally reachable challenge ports. Custom HTTPS ports must match the configured origin and require appropriate 80/443 forwarding for public certificate challenges. The local-CA test configuration is test-only and is not installed for public deployments.
 
 Docker's published ports can interact with host firewall rules differently from ordinary host processes. Review the effective exposure rather than assuming a host firewall protects every published port.
 

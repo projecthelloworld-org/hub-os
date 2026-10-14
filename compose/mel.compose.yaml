@@ -72,7 +72,7 @@ services:
       MB_SITE_URL: ${METABASE_SITE_URL:-http://localhost:3001}
       MB_ENCRYPTION_SECRET_KEY: ${METABASE_ENCRYPTION_SECRET_KEY:-aHViT3MtbG9jYWwtb25seS1lbmNyeXB0aW9uLWtleQ==}
     ports:
-      - "${HUBOS_BIND_ADDRESS:-127.0.0.1}:${METABASE_PORT:-3001}:3000"
+      - "127.0.0.1:${METABASE_PORT:-3001}:3000"
     depends_on:
       metabase-db:
         condition: service_healthy

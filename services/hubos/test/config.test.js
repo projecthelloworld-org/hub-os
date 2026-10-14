@@ -38,4 +38,9 @@ describe("configuration safety", () => {
       expect(() => loadConfig({ ...strong, HUBOS_ADMIN_KEY: value })).toThrow('distinct');
     }
   });
+  test('the TLS deployment layer cannot start an API with a plaintext site address', () => {
+    expect(() => loadConfig({ HUBOS_TLS_ENABLED: 'true' })).toThrow('HTTPS');
+    expect(loadConfig({ HUBOS_TLS_ENABLED: 'true', HUBOS_SITE_ADDRESS: 'https://monitoring.example.org' }).operatorOrigin)
+      .toBe('https://monitoring.example.org');
+  });
 });

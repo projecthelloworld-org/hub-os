@@ -10,7 +10,7 @@ async function installation(run) {
   const directory = await mkdtemp(join(tmpdir(), 'hubos-installer-contract-'));
   try {
     for (const file of ['install.sh', '.env.example', 'compose.yaml', 'compose/mel.compose.yaml',
-      'compose/monitoring.compose.yaml', 'compose/development.compose.yaml']) {
+      'compose/monitoring.compose.yaml', 'compose/development.compose.yaml', 'compose/tls.compose.yaml']) {
       const target = join(directory, file);
       await mkdir(dirname(target), { recursive: true });
       await cp(join(root, file), target);
@@ -41,6 +41,41 @@ describe('Interactive installer command-line contract', () => {
       expect(result.stdout).toContain('services were not started');
     });
   });
+  test('a public binding without an HTTPS origin is refused before configuration is written', async () => {
+    await installation(async ({ directory, execute }) => {
+      const result = await execute(['--mode', 'live'], { HUBOS_BIND_ADDRESS: '0.0.0.0' });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('HTTPS');
+      expect(await Bun.file(join(directory, '.env')).exists()).toBe(false);
+    });
+  });
+  test('an unsupported Compose version is rejected before preparing deployment credentials', async () => {
+    await installation(async ({ execute, directory }) => {
+      const result = await execute(['--mode', 'live'], { INSTALLER_FIXTURE_COMPOSE_VERSION: '2.24.3' });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('2.24.4');
+      expect(await Bun.file(join(directory, '.env')).exists()).toBe(false);
+    });
+  });
+  test('HTTPS installation preserves its secure origin and rejects malformed or mismatched listeners', async () => {
+    await installation(async ({ execute, configuration }) => {
+      const result = await execute(['--mode', 'live'], { HUBOS_BIND_ADDRESS: '0.0.0.0',
+        HUBOS_SITE_ADDRESS: 'https://monitoring.example.invalid:19443', HUBOS_HTTP_PORT: '19440', HUBOS_HTTPS_PORT: '19443' });
+      expect(result.status).toBe(0);
+      expect(await configuration()).toContain('HUBOS_SITE_ADDRESS="https://monitoring.example.invalid:19443"');
+      expect(await configuration()).toContain('HUBOS_HTTPS_PORT=19443');
+      expect(result.stdout).toContain('https://monitoring.example.invalid:19443');
+    });
+    for (const address of ['http://monitoring.example.invalid', 'https://person:password@monitoring.example.invalid',
+      'https://monitoring.example.invalid/path', 'https://monitoring.example.invalid/', 'https://monitoring.example.invalid/?secret=value',
+      'https://monitoring.example.invalid:19443']) {
+      await installation(async ({ execute, directory }) => {
+        const result = await execute(['--mode', 'live'], { HUBOS_BIND_ADDRESS: '0.0.0.0', HUBOS_SITE_ADDRESS: address, HUBOS_HTTPS_PORT: '443' });
+        expect(result.status).not.toBe(0);
+        expect(await Bun.file(join(directory, '.env')).exists()).toBe(false);
+      });
+    }
+  }, 30000);
   test('new deployments get operator authentication and independent monitoring secrets without printing passwords', async () => {
     await installation(async ({ execute, configuration, directory }) => {
       const password = 'fixture-operator-password';

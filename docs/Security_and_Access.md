@@ -45,6 +45,14 @@ Local `HUBOS_SITE_ADDRESS=:80` is for loopback use only. A remote HubOS binding 
 
 Setting a hostname alone does not configure remote TLS for Metabase, Kuma, ODK or Headwind. Keep their direct ports private and review each upstream application's exposure. Never publish example credentials or remove TLS verification to make a connection work.
 
+The source stack's `compose/tls.compose.yaml` publishes Caddy's HTTP redirect and HTTPS listener and requires an HTTPS operator origin. The other application host ports are loopback-only by default, including the optional source deployments. Access them through a secure tunnel or a reviewed upstream TLS configuration. For example, forward Metabase and Kuma privately from a remote server:
+
+```sh
+ssh -N -L 3001:127.0.0.1:3001 -L 3002:127.0.0.1:3002 administrator@your-server
+```
+
+Use your server's actual SSH account and configured ports; keep its host-key verification enabled. After forwarding, use local tool addresses in your browser. Do not turn the private management ports into public HTTP listeners as a shortcut.
+
 Caddy certificate/configuration volumes contain sensitive material. Preserve them securely. Use upstream TLS procedures for optional applications and a trusted private CA where appropriate.
 
 ## Data protection and responsibilities

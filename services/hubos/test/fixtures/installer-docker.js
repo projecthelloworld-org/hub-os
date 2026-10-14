@@ -2,7 +2,7 @@
 const args = process.argv.slice(2);
 if (args[0] === 'info') process.exit(0);
 if (args[0] === 'compose' && args[1] === 'version') {
-  console.log('2.29.7');
+  console.log(process.env.INSTALLER_FIXTURE_COMPOSE_VERSION ?? '2.29.7');
   process.exit(0);
 }
 if (args[0] === 'run') {

@@ -163,11 +163,36 @@ jobs:
           test "$(git -C vendor/odk-central/server rev-parse HEAD)" = bee93414a2215bd73d7f371113c6640c66d90c95
       - name: Start isolated API-only Central fixture
         run: docker compose -p hubos-v02-odk-test -f compose/odk-test.compose.yaml up -d --build --wait --wait-timeout 300 service
+      - name: Verify optional application private port bindings
+        run: bun test test/transport.test.js
+        working-directory: services/hubos
+        env:
+          HUBOS_TEST_INSTALLER_CONFIG: "true"
+          HUBOS_TEST_ECOSYSTEM_CONFIG: "true"
       - name: Validate form and verify actual read-only OData client
         run: bun scripts/test-odk.js
       - name: Clean only the disposable ODK fixture
         if: always()
         run: docker compose -p hubos-v02-odk-test -f compose/odk-test.compose.yaml down --volumes
+
+  tls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+        working-directory: services/hubos
+      - name: Verify certificate trust, HTTP redirects and HTTPS operator origin
+        run: bun test test/tls.integration.test.js
+        working-directory: services/hubos
+        env:
+          HUBOS_TEST_TLS_PROJECT: hubos-ci-tls-test
+      - name: Clean only the isolated TLS fixture
+        if: always()
+        run: docker compose -p hubos-ci-tls-test -f compose/access-test.compose.yaml -f compose/tls.compose.yaml -f compose/tls-test.compose.yaml down --volumes
 
   installer:
     runs-on: ubuntu-latest

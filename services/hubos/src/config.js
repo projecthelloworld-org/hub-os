@@ -29,6 +29,9 @@ export function loadConfig(env = process.env) {
   if (!['127.0.0.1', '::1', 'localhost'].includes(env.HUBOS_BIND_ADDRESS ?? '127.0.0.1') && !operatorOrigin) {
     throw new Error('Remote exposure requires an explicit HTTPS HUBOS_SITE_ADDRESS');
   }
+  if (readBoolean(env.HUBOS_TLS_ENABLED) && !operatorOrigin) {
+    throw new Error('TLS deployment requires an explicit HTTPS HUBOS_SITE_ADDRESS');
+  }
   const config = {
     environment: env.HUBOS_ENV ?? "development",
     host: env.HUBOS_HOST ?? "127.0.0.1",
