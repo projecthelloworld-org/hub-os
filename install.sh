@@ -39,9 +39,6 @@ die() { printf '\033[1;31m[HubOS]\033[0m %s\n' "$*" >&2; exit 1; }
 restore_terminal() {
   local result=$?
   if (( TTY_ECHO_DISABLED )) && [[ -w "$TTY_DEVICE" ]]; then stty echo < "$TTY_DEVICE" 2>/dev/null || true; fi
-  if [[ -n "$UPGRADE_BACKUP" && ! -e "$INSTALL_DIR" && -d "$UPGRADE_BACKUP" ]]; then
-    mv "$UPGRADE_BACKUP" "$INSTALL_DIR" || warn "Restore the previous source tree from $UPGRADE_BACKUP before continuing."
-  fi
   [[ -z "$ARCHIVE_WORK" ]] || rm -rf "$ARCHIVE_WORK"
   [[ -z "$UPGRADE_WORK" ]] || rm -rf "$UPGRADE_WORK"
   [[ -z "$INSTALL_LOCK" ]] || rm -rf "$INSTALL_LOCK"
@@ -270,10 +267,15 @@ download_source() {
     /^\// || /(^|\/)\.\.($|\/)/ || /[[:cntrl:]]/ {bad=1}
     {split($0,p,"/"); if (!root) root=p[1]; if (p[1]!=root) bad=1}
     END {exit bad || !root}' || die "The release contains unsafe paths or more than one source tree."
-  tar -tvzf "$archive" | awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" {bad=1} END {exit bad}' \
-    || die "Release archives cannot contain links or special files."
+  tar -tvzf "$archive" | awk '
+    {kind=substr($0,1,1); mode=substr($0,1,10)}
+    kind!="-" && kind!="d" {bad=1}
+    mode ~ /[sStT]/ || substr(mode,9,1)=="w" {bad=1}
+    END {exit bad}' || die "Release archives cannot contain links, special files or unsafe permission bits."
   mkdir -p "$work/unpacked" "$target"
-  tar -xzf "$archive" -C "$work/unpacked"
+  # Public source modes must survive the private credential umask so the image's
+  # non-root Bun user can read copied source. Ownership is never imported.
+  tar -xzpf "$archive" --no-same-owner -C "$work/unpacked"
   extracted=$(find "$work/unpacked" -mindepth 1 -maxdepth 1 -type d | head -n 1)
   [[ -n "$extracted" && -f "$extracted/compose.yaml" ]] || die "The release does not contain a HubOS source tree."
   package_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$extracted/services/hubos/package.json" 2>/dev/null || true)
@@ -281,7 +283,7 @@ download_source() {
     || die "The package version does not agree with this sealed installer."
   [[ ! -e "$extracted/.env" && ! -e "$extracted/.hubos-credentials" && ! -e "$extracted/.git" ]] \
     || die "A release archive must not contain private deployment configuration or a Git checkout."
-  cp -R "$extracted"/. "$target"/
+  cp -RPp "$extracted"/. "$target"/
   printf 'version=%s\nsha256=%s\n' "$VERSION" "$expected_sha" > "$target/.hubos-release"
   chmod 600 "$target/.hubos-release"
   rm -rf "$work"
@@ -311,14 +313,19 @@ upgrade_source() {
   download_source "$UPGRADE_WORK/release"
   [[ -f "$UPGRADE_WORK/release/compose/mel.compose.yaml" && -f "$UPGRADE_WORK/release/compose/monitoring.compose.yaml" ]] \
     || die "The sealed package is not a HubOS monitoring release."
-  mkdir "$UPGRADE_WORK/next"
-  cp -RPp "$target"/. "$UPGRADE_WORK/next"/
   # Refuse to follow a deployment's links when overlaying managed release files.
   while IFS= read -r path; do
     relative=${path#"$UPGRADE_WORK/release/"}
-    [[ ! -L "$UPGRADE_WORK/next/$relative" ]] || die "A managed release path is a symbolic link. Review the deployment before upgrading."
+    [[ ! -L "$target/$relative" ]] || die "A managed release path is a symbolic link. Review the deployment before upgrading."
+    if [[ -e "$target/$relative" ]]; then
+      [[ -d "$path" && -d "$target/$relative" || -f "$path" && -f "$target/$relative" ]] \
+        || die "A managed release path has changed between file and directory. Review the deployment before upgrading."
+    fi
   done < <(find "$UPGRADE_WORK/release" -mindepth 1 -print)
-  cp -RPp "$UPGRADE_WORK/release"/. "$UPGRADE_WORK/next"/
+  # Publish the receipt only after every managed file is in place. A partial
+  # copy keeps the old receipt so another run stages the package again.
+  cp -p "$UPGRADE_WORK/release/.hubos-release" "$UPGRADE_WORK/receipt"
+  rm "$UPGRADE_WORK/release/.hubos-release"
   if [[ -n "$running" ]]; then
     old_files=(-f compose.yaml)
     for path in compose/mel.compose.yaml compose/monitoring.compose.yaml; do [[ ! -f "$path" ]] || old_files+=(-f "$path"); done
@@ -330,10 +337,14 @@ upgrade_source() {
   fi
   UPGRADE_BACKUP="$target.pre-upgrade-$(random_secret 4)"
   [[ ! -e "$UPGRADE_BACKUP" && ! -L "$UPGRADE_BACKUP" ]] || die "The selected backup path already exists. No source files were moved."
-  cd "$(dirname "$target")"
-  mv "$target" "$UPGRADE_BACKUP"
+  mkdir "$UPGRADE_BACKUP"
   chmod 700 "$UPGRADE_BACKUP"
-  mv "$UPGRADE_WORK/next" "$target"
+  cp -RPp "$target"/. "$UPGRADE_BACKUP"/
+  # Keep bind-mounted directory identities stable across Docker hosts. In
+  # particular, replacing the entire tree can leave a VM's existing mounts
+  # pointing at the old migrations even after containers are recreated.
+  cp -RPp "$UPGRADE_WORK/release"/. "$target"/
+  cp -p "$UPGRADE_WORK/receipt" "$target/.hubos-release"
   SOURCE_REPLACED=1
   info "Previous source and private configuration retained at $UPGRADE_BACKUP. This is not a database backup."
   rm -rf "$UPGRADE_WORK"

@@ -77,7 +77,9 @@ The v0.2.0 installer stages checksum-verified release upgrades for unpacked depl
 
 An upgrade retains `.env`, `.hubos-credentials`, private files and operator files absent from the new package. Release-owned files, including Compose definitions and the default Caddy configuration, are replaced; review local edits before proceeding. The previous source tree is retained in an owner-accessible sibling directory named `<installation>.pre-upgrade-<id>`. That directory contains private configuration but is **not a database backup**. Review and remove it deliberately after verifying the upgraded installation and securing an off-host backup.
 
-Services are paused only after the new package has been verified and staged. Starting an upgrade recreates containers against the retained data namespace and waits for provisioning. `--no-start` upgrades require services to be stopped already. If startup or migrations fail, services may remain paused: inspect the error, preserve the backup and rerun the installer after correcting the problem. Do not undo a database migration by replacing source files alone.
+Services are paused only after the new package has been verified and staged. The installation directory and existing bind-mounted directories remain in place while managed files are replaced; the new package receipt is saved only after copying succeeds. Public source permissions are preserved for non-root containers, while generated credential files remain owner-readable only.
+
+Starting an upgrade recreates containers against the retained data namespace and waits for provisioning. `--no-start` upgrades require services to be stopped already. If copying, startup or migrations fail, services may remain paused: inspect the error, preserve the backup and rerun the installer after correcting the problem. Do not undo a database migration by replacing source files alone.
 
 A sibling `<installation>.install-lock` prevents concurrent installers. Normal exit removes the lock; after a force-killed process, confirm that no installer is running before removing a stale lock. Never remove another active installer's lock.
 

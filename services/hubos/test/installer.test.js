@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -111,6 +111,8 @@ describe('Interactive installer command-line contract', () => {
       expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: expect.any(String) });
       expect(await readFile(join(fresh, '.hubos-release'), 'utf8')).toBe(`version=0.2.0\nsha256=${checksum}\n`);
       expect(await readFile(join(fresh, 'release-marker.txt'), 'utf8')).toBe('fixture v0.2.0 package');
+      expect((await stat(join(fresh, 'services/hubos/package.json'))).mode & 0o444).toBe(0o444);
+      expect((await stat(join(fresh, 'services/hubos'))).mode & 0o111).toBe(0o111);
       expect(await readFile(join(fresh, '.env'), 'utf8')).toContain('HUBOS_DEMO_MODE=false');
       expect(await Bun.file(`${fresh}.install-lock/owner`).exists()).toBe(false);
     });
