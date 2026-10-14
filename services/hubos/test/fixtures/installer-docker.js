@@ -13,8 +13,14 @@ if (args[0] === 'run') {
 if (args[0] === 'compose' && args.includes('config')) process.exit(0);
 if (args[0] === 'compose' && args.includes('up')) process.exit(0);
 if (args[0] === 'compose' && args.includes('ps')) {
-  if (args.includes('-q')) console.log(`fixture-${args.at(-1)}`);
+  if (args.at(-1) === '-q') {
+    if (process.env.INSTALLER_FIXTURE_PROJECT_EXISTS === 'container') console.log('fixture-existing-container');
+  } else if (args.includes('-q')) console.log(`fixture-${args.at(-1)}`);
   else console.log(JSON.stringify({ Health: 'healthy' }));
+  process.exit(0);
+}
+if (args[0] === 'volume' && args[1] === 'ls') {
+  if (process.env.INSTALLER_FIXTURE_PROJECT_EXISTS === 'volume') console.log('fixture-existing-volume');
   process.exit(0);
 }
 if (args[0] === 'inspect') {

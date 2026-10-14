@@ -98,11 +98,36 @@ describe('Interactive installer command-line contract', () => {
       expect(upgraded).toMatch(/^HUBOS_OPERATOR_PASSWORD_HASH=['"]\$2[aby]\$/m);
       expect(upgraded).toMatch(/^KUMA_ADMIN_PASSWORD=/m);
       expect(upgraded).toMatch(/^METABASE_HUBOS_DB_PASSWORD=/m);
+      expect(upgraded).toMatch(/^COMPOSE_PROJECT_NAME=['"]hubos['"]$/m);
       expect((await execute()).status).toBe(0);
       expect(await configuration()).toBe(upgraded);
       expect((await execute(['--mode', 'live'])).status).not.toBe(0);
       expect(await configuration()).toBe(upgraded);
     });
+  });
+  test('separate fresh installations get distinct persistent-data namespaces', async () => {
+    let firstProject;
+    await installation(async ({ execute, configuration }) => {
+      expect((await execute(['--mode', 'demo'])).status).toBe(0);
+      firstProject = (await configuration()).match(/^COMPOSE_PROJECT_NAME=['"]([a-z0-9_-]+)['"]$/m)?.[1];
+      expect(firstProject).toMatch(/^hubos-[a-f0-9]{8}$/);
+    });
+    await installation(async ({ execute, configuration }) => {
+      expect((await execute(['--mode', 'live'])).status).toBe(0);
+      const secondProject = (await configuration()).match(/^COMPOSE_PROJECT_NAME=['"]([a-z0-9_-]+)['"]$/m)?.[1];
+      expect(secondProject).toMatch(/^hubos-[a-f0-9]{8}$/);
+      expect(secondProject).not.toBe(firstProject);
+    });
+  });
+  test('a new installation cannot reuse a data namespace with containers or retained volumes', async () => {
+    for (const state of ['container', 'volume']) {
+      await installation(async ({ directory, execute }) => {
+        const result = await execute(['--mode', 'live'], { COMPOSE_PROJECT_NAME: 'existing-community-fixture', INSTALLER_FIXTURE_PROJECT_EXISTS: state });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('existing data');
+        expect(await Bun.file(join(directory, '.env')).exists()).toBe(false);
+      });
+    }
   });
   test('healthy applications do not mask a failed provisioning task', async () => {
     await installation(async ({ execute }) => {

@@ -71,6 +71,8 @@ The installer preserves an existing `.env` rather than silently rotating credent
 
 The source installer adds missing monitoring settings without replacing existing database passwords, application encryption keys or tool accounts. Repeated setup preserves those settings. An installation cannot silently change from demonstration to live mode: use a separate directory and fresh volumes so fictional history is not mistaken for operational evidence.
 
+New source installations save a distinct Docker project name in `COMPOSE_PROJECT_NAME`. A requested name with existing containers or retained volumes is rejected for a fresh installation. Upgrades preserve the saved name; legacy v0.1.0 installations retain their original `hubos` namespace unless they were explicitly configured otherwise. Keep this name with the installation configuration: a different name selects different persistent storage, not an upgrade of the original data.
+
 Before an upgrade, preserve:
 
 - HubOS PostgreSQL and Metabase application databases.
