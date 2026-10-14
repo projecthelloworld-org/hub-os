@@ -16,6 +16,8 @@ The core snapshot contains:
 - `.env`, `.hubos-credentials`, `config` and trusted local `plugins`, where present.
 - A manifest of image identities and SHA-256 checksums for every artifact.
 
+The manifest also records the installation's configuration file and directory modes. Snapshot copies remain private; restoration reapplies the original read/execute policy so a non-root container can read its approved configuration. `.env`, `.hubos-credentials` and the optional `config/source-secrets.env` stay owner-only. On another host, review ownership/groups and container readability without making secret files public.
+
 Optional ODK/Headwind databases and volumes are **not** included. Secret files outside the installation, external secret managers, custom Compose overrides, host configuration and externally managed source systems need separate protection. Symlinks in the copied configuration are rejected rather than followed.
 
 ## Create a consistent snapshot

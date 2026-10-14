@@ -38,12 +38,13 @@ async function digest(path) {
   return hasher.digest('hex');
 }
 
-async function privateCopy(source, target) {
+async function privateCopy(source, target, permissions, key = '') {
   const info = await lstat(source);
   if (info.isSymbolicLink()) fail('RECOVERY_CONFIGURATION_SYMLINK');
+  if (permissions) permissions[key] = info.mode & 0o777;
   if (info.isDirectory()) {
     await mkdir(target, { mode: 0o700 });
-    for (const name of await readdir(source)) await privateCopy(join(source, name), join(target, name));
+    for (const name of await readdir(source)) await privateCopy(join(source, name), join(target, name), permissions, key ? `${key}/${name}` : name);
   } else if (info.isFile()) {
     await copyFile(source, target, 1);
     await chmod(target, 0o600);
@@ -85,11 +86,24 @@ async function service(context, name) {
   const id = await context.compose(['ps', '--all', '-q', name]);
   if (!id || /\s/.test(id)) fail('RECOVERY_SINGLE_SERVICE_CONTAINER_REQUIRED');
   const identity = JSON.parse(await command(['docker', 'inspect', '--format',
-    '{"labels":{{json .Config.Labels}},"mounts":{{json .Mounts}},"state":{{json .State.Status}},"image":{{json .Image}}}', id]));
+    '{"labels":{{json .Config.Labels}},"mounts":{{json .Mounts}},"state":{{json .State.Status}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},"image":{{json .Image}}}', id]));
   const workingDirectory = await realpath(identity.labels['com.docker.compose.project.working_dir']);
   if (identity.labels['com.docker.compose.project'] !== context.project || workingDirectory !== context.directory
     || identity.labels['com.docker.compose.service'] !== name) fail('RECOVERY_PROJECT_IDENTITY_MISMATCH');
   return { id, ...identity };
+}
+
+async function resumeServices(context, names) {
+  // Compose 2.24.4 supports start, but not the newer start --wait flags.
+  await context.compose(['start', ...names]);
+  const deadline = Date.now() + 180000;
+  while (Date.now() < deadline) {
+    const states = await Promise.all(names.map((name) => service(context, name)));
+    if (states.every((state) => state.state === 'running' && (!state.health || state.health === 'healthy'))) return;
+    if (states.some((state) => ['exited', 'dead'].includes(state.state))) fail('RECOVERY_RESUME_SERVICE_FAILED');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  fail('RECOVERY_RESUME_HEALTH_TIMEOUT');
 }
 
 async function createBackup({ directory, output, confirmPause }) {
@@ -122,6 +136,7 @@ async function createBackup({ directory, output, confirmPause }) {
   process.on('SIGTERM', cancel);
   const running = writers.filter((name) => services[name].state === 'running');
   let paused = false, completed = false;
+  const permissions = {};
   try {
     await mkdir(output, { mode: 0o700 });
     await mkdir(join(output, 'database'), { mode: 0o700 });
@@ -132,7 +147,7 @@ async function createBackup({ directory, output, confirmPause }) {
     for (const name of writers) if ((await service(context, name)).state === 'running') fail('RECOVERY_WRITER_STILL_RUNNING');
     for (const name of ['.env', '.hubos-credentials', 'config', 'plugins']) {
       try { await lstat(join(context.directory, name)); } catch (error) { if (error.code === 'ENOENT' && name !== '.env') continue; throw error; }
-      await privateCopy(join(context.directory, name), join(output, 'configuration', name));
+      await privateCopy(join(context.directory, name), join(output, 'configuration', name), permissions, name);
     }
     for (const [name, file] of [['db', 'core.dump'], ['metabase-db', 'metabase.dump']]) {
       await command(['docker', 'exec', services[name].id, 'sh', '-c',
@@ -149,6 +164,7 @@ async function createBackup({ directory, output, confirmPause }) {
     if (cancellationRequested) fail('RECOVERY_INTERRUPTED');
     const manifest = { format: 'hubos-backup-v1', created_at: new Date().toISOString(), project: context.project,
       consistency: 'writers-paused', hubos_version: JSON.parse(await readFile(join(context.directory, 'services/hubos/package.json'), 'utf8')).version,
+      configuration_modes: permissions,
       images: Object.fromEntries(Object.entries(services).map(([name, service]) => [name, service.image])),
       artifacts };
     await writeFile(join(output, 'manifest.json.pending'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
@@ -160,7 +176,7 @@ async function createBackup({ directory, output, confirmPause }) {
     cancellationRequested = false;
     let resumed = false;
     try {
-      if (paused && running.length) await context.compose(['start', '--wait', '--wait-timeout', '120', ...running]);
+      if (paused && running.length) await resumeServices(context, running);
       resumed = true;
     } finally {
       if (resumed) { await unlink(join(lock, 'owner.json')); await rmdir(lock); }
@@ -236,10 +252,26 @@ async function restoreBackup({ backup, directory, project, confirmIsolated }) {
     if (details.split('\n').some((line) => !['d', '-'].includes(line[0]))) fail('RECOVERY_UNSUPPORTED_ARCHIVE_ENTRY');
   }
   const configuration = join(snapshot.directory, 'configuration');
+  const modes = snapshot.manifest.configuration_modes;
+  if (!modes || typeof modes !== 'object' || Array.isArray(modes)) fail('RECOVERY_CONFIGURATION_MODES_REQUIRED');
+  for (const [path, mode] of Object.entries(modes)) {
+    if (isAbsolute(path) || path.includes('\\') || /[\u0000-\u001f]/.test(path)
+      || path.split('/').some((part) => !part || part === '.' || part === '..')
+      || !['.env', '.hubos-credentials', 'config', 'plugins'].includes(path.split('/')[0])
+      || !Number.isInteger(mode) || mode < 0 || mode > 0o777) fail('RECOVERY_CONFIGURATION_MODE_INVALID');
+    if (!within(configuration, await realpath(join(configuration, path)))) fail('RECOVERY_CONFIGURATION_MODE_INVALID');
+  }
+  const configurationFiles = await filesUnder(configuration);
+  if (configurationFiles.some((path) => !Object.hasOwn(modes, path))) fail('RECOVERY_CONFIGURATION_MODES_REQUIRED');
   for (const name of await readdir(configuration)) {
     if (!['.env', '.hubos-credentials', 'config', 'plugins'].includes(name)) fail('RECOVERY_BACKUP_CONFIGURATION_INVALID');
   }
   for (const name of await readdir(configuration)) await privateCopy(join(configuration, name), join(directory, name));
+  for (const [path, mode] of Object.entries(modes)) {
+    // Preserve the deployed read/execute policy, never broaden it to fix a
+    // container error. Credential files remain private to the restoring owner.
+    await chmod(join(directory, path), ['.env', '.hubos-credentials', 'config/source-secrets.env'].includes(path) ? 0o600 : mode);
+  }
   await writeFile(join(directory, '.env'), `\nCOMPOSE_PROJECT_NAME=${project}\nHUBOS_NOTIFICATION_MODE=disabled\n`, { flag: 'a', mode: 0o600 });
   const context = await deployment(directory, project);
   for (const [name, volume] of Object.entries(context.configuration.volumes)) {

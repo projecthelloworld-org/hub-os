@@ -60,6 +60,8 @@ suite('Core backup and recovery (owned native installer fixture)', () => {
     expect(manifest.format).toBe('hubos-backup-v1');
     expect(manifest.project).toBe(project);
     expect(manifest.consistency).toBe('writers-paused');
+    expect(manifest.configuration_modes['config/plugins']).toBe((await stat(join(directory, 'config/plugins'))).mode & 0o777);
+    expect(manifest.configuration_modes['config/plugins/local.example.json']).toBe((await stat(join(directory, 'config/plugins/local.example.json'))).mode & 0o777);
     expect(manifest.artifacts.map((artifact) => artifact.path)).toContain('database/core.dump');
     expect(manifest.artifacts.map((artifact) => artifact.path)).toContain('database/metabase.dump');
     for (const name of ['kuma-data', 'hubos-secrets', 'caddy-data', 'caddy-config']) {
@@ -98,11 +100,29 @@ suite('Core backup and recovery (owned native installer fixture)', () => {
     expect(running.stdout.trim()).toBe('');
     const configuration = await readFile(join(restored, '.env'), 'utf8');
     expect(configuration).toContain('HUBOS_NOTIFICATION_MODE=disabled');
+    expect((await stat(join(restored, 'config/plugins'))).mode & 0o777).toBe((await stat(join(directory, 'config/plugins'))).mode & 0o777);
+    expect((await stat(join(restored, 'config/plugins/local.example.json'))).mode & 0o777).toBe((await stat(join(directory, 'config/plugins/local.example.json'))).mode & 0o777);
     expect(await readFile(join(restored, '.hubos-credentials'), 'utf8')).toBe(await readFile(join(directory, '.hubos-credentials'), 'utf8'));
     // Only this isolated fixture receives alternate loopback ports before startup.
     await writeFile(join(restored, '.env'), configuration + '\nHUBOS_HTTP_PORT=19180\nMETABASE_PORT=19181\nKUMA_PORT=19182\nMAILPIT_WEB_PORT=19185\n', { mode: 0o600 });
     const start = await run(['docker', 'compose', '-p', restoreProject, ...files, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', '180'], 240000, restored);
     if (start.status !== 0) throw new Error('Isolated restored fixture did not provision successfully');
+    const deadline = performance.now() + 180000;
+    let provisioned = false;
+    while (performance.now() < deadline) {
+      const states = [];
+      for (const name of ['migrate', 'metabase-bootstrap', 'kuma-bootstrap']) {
+        const id = await run(['docker', 'compose', '-p', restoreProject, ...files, 'ps', '--all', '-q', name], 30000, restored);
+        if (id.status !== 0 || !id.stdout.trim()) throw new Error('Restored provisioning container missing');
+        const state = await run(['docker', 'inspect', '--format', '{{.State.Status}}|{{.State.ExitCode}}', id.stdout.trim()]);
+        if (state.status !== 0) throw new Error('Cannot inspect restored provisioning state');
+        if (state.stdout.startsWith('exited|') && state.stdout.trim() !== 'exited|0') throw new Error(`Restored ${name} provisioning failed`);
+        states.push(state.stdout.trim());
+      }
+      if (states.every((state) => state === 'exited|0')) { provisioned = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    expect(provisioned).toBe(true);
     const response = await fetch('http://127.0.0.1:19180/api/v1/sites', { headers: { authorization: auth } });
     expect(response.status).toBe(200);
     expect((await response.json()).sites.map((site) => site.id)).toEqual(originalSites.map((site) => site.id));
