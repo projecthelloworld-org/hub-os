@@ -71,6 +71,8 @@ export class MemoryStore {
     const source = this.state.sourceConnections.find((source) => source.id === status.source_connection_id);
     const site = this.state.sites.find((site) => site.id === status.site_id);
     return currentStatus({ ...status, source_active: Boolean(source?.enabled && site?.organisation_id === source.organisation_id
+      && this.state.mappings.some((mapping) => mapping.source_connection_id === source.id && mapping.entity_type === 'site'
+        && mapping.entity_id === site.id && mapping.verified)
       && isCurrentEvidence(source.last_success_at, source.freshness_seconds ?? 300)) });
   }
 

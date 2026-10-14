@@ -246,6 +246,32 @@ function sourceContract(getStore, getOrganisation) {
       expect(await late.json()).toMatchObject({ accepted: 0, rejected: 1 });
     } finally { await server.stop(); }
   });
+  test('new collection after a mapping correction cannot revive status at the old site', async () => {
+    const store = getStore();
+    const first = await (await call('/api/v1/sites', { organisation_id: getOrganisation(), site_code: `BEFORE-${randomId()}`,
+      name: 'Original community fixture', country_code: 'UG' })).json();
+    const second = await (await call('/api/v1/sites', { organisation_id: getOrganisation(), site_code: `AFTER-${randomId()}`,
+      name: 'Corrected community fixture', country_code: 'UG' })).json();
+    const connection = await (await call('/api/v1/source-connections', source())).json();
+    const path = `/api/v1/source-connections/${connection.id}/mappings`;
+    const mapping = await (await call(path, { site_id: first.id, external_id: 'remapped-infrastructure', verified: true })).json();
+    await store.enableSource(connection.id, (await store.getSourceAdminContext(connection.id)).source);
+    await store.upsertStatuses([{ site_id: first.id, source_connection_id: connection.id, domain: 'connectivity',
+      status: 'healthy', reason: 'Original fixture evidence', observed_at: new Date().toISOString(), rule_version: 'fixture' }]);
+    await store.markSourceCollected(connection.id, new Date());
+    expect((await (await call(`/api/v1/sites/${first.id}/status`)).json()).statuses[0].status).toBe('healthy');
+    await store.disableSource(connection.id);
+    expect((await call(`${path}/${mapping.id}`, { site_id: second.id, verified: true }, { method: 'PATCH' })).status).toBe(200);
+    await store.enableSource(connection.id, (await store.getSourceAdminContext(connection.id)).source);
+    await store.upsertStatuses([{ site_id: second.id, source_connection_id: connection.id, domain: 'connectivity',
+      status: 'healthy', reason: 'Corrected fixture evidence', observed_at: new Date().toISOString(), rule_version: 'fixture' }]);
+    await store.markSourceCollected(connection.id, new Date());
+    expect((await (await call(`/api/v1/sites/${first.id}/status`)).json()).statuses[0].status).toBe('unknown');
+    expect((await (await call(`/api/v1/sites/${second.id}/status`)).json()).statuses[0].status).toBe('healthy');
+    const overview = await (await call('/api/v1/overview')).json();
+    expect(overview.sites.find((site) => site.id === first.id).statuses[0].status).toBe('unknown');
+    expect(overview.sites.find((site) => site.id === second.id).statuses[0].status).toBe('healthy');
+  });
 }
 
 describe('Protected source administration', () => {

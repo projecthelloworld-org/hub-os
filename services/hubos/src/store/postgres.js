@@ -107,6 +107,8 @@ export class PostgresStore {
       FROM status_snapshots ss LEFT JOIN source_connections sc ON sc.id = ss.source_connection_id
         AND sc.organisation_id = ${sites[0].organisation_id}
         AND sc.last_success_at BETWEEN now() - make_interval(secs => sc.freshness_seconds) AND now() + interval '1 minute'
+        AND EXISTS (SELECT 1 FROM external_identifiers ei WHERE ei.source_connection_id = sc.id
+          AND ei.entity_type = 'site' AND ei.entity_id = ss.site_id AND ei.verified)
       WHERE ss.site_id = ${siteId} ORDER BY ss.domain
     `;
     return { site: sites[0], statuses: statuses.map((status) => currentStatus(status)) };
@@ -291,6 +293,8 @@ export class PostgresStore {
       FROM status_snapshots ss JOIN sites s ON s.id = ss.site_id
       LEFT JOIN source_connections sc ON sc.id = ss.source_connection_id AND sc.organisation_id = s.organisation_id
         AND sc.last_success_at BETWEEN now() - make_interval(secs => sc.freshness_seconds) AND now() + interval '1 minute'
+        AND EXISTS (SELECT 1 FROM external_identifiers ei WHERE ei.source_connection_id = sc.id
+          AND ei.entity_type = 'site' AND ei.entity_id = ss.site_id AND ei.verified)
       ORDER BY ss.site_id, ss.domain
     `;
     const incidents = await this.db`

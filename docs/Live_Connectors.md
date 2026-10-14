@@ -38,6 +38,8 @@ Use `PATCH /api/v1/source-connections/{sourceId}` while disabled to edit its nam
 
 List mappings with `GET /api/v1/source-connections/{sourceId}/mappings`. Correct a paused association or change verification with `PATCH /api/v1/source-connections/{sourceId}/mappings/{mappingId}`. A different `site_id` resets verification unless explicitly verified. Mapping UUID and external ID stay fixed; add another mapping for another external ID. Existing observations keep their original site association. Sites must belong to the source's organisation, and tool-owned automatic mappings remain controlled by provisioning.
 
+Current status and metric cards require an active, verified association with that site. After a correction, recent history at the former site is retained but cannot become current merely because collection succeeds at the new site. Re-enabling an unchanged source also leaves metrics unknown until collection succeeds; measurement age and source freshness are separate checks.
+
 Retest and re-enable after changes. If settings change during an access test, activation refuses the outdated result. These organisation checks preserve data relationships; they are not partner access isolation. All operators in this release share installation-wide authority.
 
 ## Initial modules

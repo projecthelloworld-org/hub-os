@@ -34,6 +34,7 @@ suite('Reporting views and enforced read-only access', () => {
         VALUES (${sourceId},${orgId},${sourceId},'fixture','fixture','api_pull',true,'{"credential_refs":{"password":"env:PRIVATE_PASSWORD"}}'::jsonb)`;
       await store.db`INSERT INTO external_identifiers (source_connection_id,entity_type,entity_id,external_id,verified)
         VALUES (${sourceId},'site',${siteId},${siteId},true)`;
+      await store.markSourceCollected(sourceId, new Date());
     }
   }, 20000);
   afterAll(async () => {
@@ -147,5 +148,54 @@ suite('Reporting views and enforced read-only access', () => {
     await store.db`INSERT INTO status_snapshots (site_id,domain,status,reason,observed_at,rule_version)
       VALUES (${siteId},'usage','healthy','Legacy unattributed snapshot',now(),'v0.1')`;
     expect((await reporting`SELECT status FROM analytics.site_status_current WHERE site_id = ${siteId} AND domain = 'usage'`)[0].status).toBe('unknown');
+  });
+
+  test('corrected mappings preserve history but stop old-site metrics and status from becoming current again', async () => {
+    const correctedSite = randomId();
+    await store.db`INSERT INTO sites (id,organisation_id,site_code,name,country_code)
+      VALUES (${correctedSite},${orgId},'FIXTURE-CORRECTED','Corrected community fixture','UG')`;
+    const recordId = randomId();
+    await store.ingestObservations([{ site_id: siteId, source_connection_id: firstSource, external_record_id: recordId,
+      external_entity_id: siteId, metric: 'connectivity.wan.available', value: 1, unit: 'boolean', quality: 'valid',
+      observed_at: new Date(), attributes: {} }]);
+    await store.upsertStatuses([{ site_id: siteId, source_connection_id: firstSource, domain: 'connectivity', status: 'healthy',
+      reason: 'Before mapping correction', observed_at: new Date(), rule_version: 'fixture' }]);
+    await store.markSourceCollected(firstSource, new Date());
+    expect((await reporting`SELECT value FROM analytics.metric_current WHERE site_id = ${siteId}
+      AND source_connection_id = ${firstSource} AND metric = 'connectivity.wan.available'`)[0].value).toBe(1);
+    await store.disableSource(firstSource);
+    const [mapping] = await store.listMappings(firstSource);
+    await store.editMapping(firstSource, String(mapping.id), { site_id: correctedSite, verified: true });
+    await store.enableSource(firstSource, (await store.getSourceAdminContext(firstSource)).source);
+    await store.ingestObservations([{ site_id: correctedSite, source_connection_id: firstSource, external_record_id: randomId(),
+      external_entity_id: siteId, metric: 'connectivity.wan.available', value: 1, unit: 'boolean', quality: 'valid',
+      observed_at: new Date(), attributes: {} }]);
+    await store.upsertStatuses([{ site_id: correctedSite, source_connection_id: firstSource, domain: 'connectivity', status: 'healthy',
+      reason: 'After mapping correction', observed_at: new Date(), rule_version: 'fixture' }]);
+    await store.markSourceCollected(firstSource, new Date());
+    expect((await reporting`SELECT value,fresh FROM analytics.metric_current WHERE site_id = ${siteId}
+      AND source_connection_id = ${firstSource} AND metric = 'connectivity.wan.available'`)[0]).toMatchObject({ value: null, fresh: false });
+    expect((await reporting`SELECT value FROM analytics.metric_current WHERE site_id = ${correctedSite}
+      AND source_connection_id = ${firstSource} AND metric = 'connectivity.wan.available'`)[0].value).toBe(1);
+    expect((await reporting`SELECT connectivity FROM analytics.community_operations WHERE site_id = ${siteId}`)[0].connectivity).toBe('unknown');
+    expect((await reporting`SELECT status FROM analytics.site_status_current WHERE site_id = ${siteId} AND domain = 'connectivity'`)[0].status).toBe('unknown');
+    expect(await reporting`SELECT site_code,value FROM analytics.telemetry WHERE source_connection_id = ${firstSource}
+      AND metric = 'connectivity.wan.available'`).toContainEqual({ site_code: 'FIXTURE-01', value: 1 });
+  });
+
+  test('re-enabling an unchanged mapping leaves ordinary metrics unknown until collection succeeds', async () => {
+    const metric = 'network.devices.total.count';
+    await record(secondSource, metric, 12);
+    await store.markSourceCollected(secondSource, new Date());
+    const current = async () => (await reporting`SELECT value,fresh FROM analytics.metric_current
+      WHERE site_id = ${siteId} AND source_connection_id = ${secondSource} AND metric = ${metric}`)[0];
+    expect(await current()).toMatchObject({ value: 12, fresh: true });
+    await store.disableSource(secondSource);
+    await store.enableSource(secondSource, (await store.getSourceAdminContext(secondSource)).source);
+    expect(await current()).toMatchObject({ value: null, fresh: false });
+    await record(secondSource, metric, 13);
+    expect(await current()).toMatchObject({ value: null, fresh: false });
+    await store.markSourceCollected(secondSource, new Date());
+    expect(await current()).toMatchObject({ value: 13, fresh: true });
   });
 });
