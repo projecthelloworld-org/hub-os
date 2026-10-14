@@ -73,6 +73,14 @@ The installer preserves an existing `.env` rather than silently rotating credent
 
 The source installer adds missing monitoring settings without replacing existing database passwords, application encryption keys or tool accounts. Repeated setup preserves those settings. An installation cannot silently change from demonstration to live mode: use a separate directory and fresh volumes so fictional history is not mistaken for operational evidence.
 
+The v0.2.0 installer stages checksum-verified release upgrades for unpacked deployments. When the selected release differs from the saved package identity, it asks for upgrade confirmation. Take a consistent backup first. Non-interactive upgrades require `--yes`, which also accepts that confirmation. A script downloaded into an existing deployment can use `--upgrade` to request the sealed package explicitly; Git checkouts must instead be updated through Git.
+
+An upgrade retains `.env`, `.hubos-credentials`, private files and operator files absent from the new package. Release-owned files, including Compose definitions and the default Caddy configuration, are replaced; review local edits before proceeding. The previous source tree is retained in an owner-accessible sibling directory named `<installation>.pre-upgrade-<id>`. That directory contains private configuration but is **not a database backup**. Review and remove it deliberately after verifying the upgraded installation and securing an off-host backup.
+
+Services are paused only after the new package has been verified and staged. Starting an upgrade recreates containers against the retained data namespace and waits for provisioning. `--no-start` upgrades require services to be stopped already. If startup or migrations fail, services may remain paused: inspect the error, preserve the backup and rerun the installer after correcting the problem. Do not undo a database migration by replacing source files alone.
+
+A sibling `<installation>.install-lock` prevents concurrent installers. Normal exit removes the lock; after a force-killed process, confirm that no installer is running before removing a stale lock. Never remove another active installer's lock.
+
 New source installations save a distinct Docker project name in `COMPOSE_PROJECT_NAME`. A requested name with existing containers or retained volumes is rejected for a fresh installation. Upgrades preserve the saved name; legacy v0.1.0 installations retain their original `hubos` namespace unless they were explicitly configured otherwise. Keep this name with the installation configuration: a different name selects different persistent storage, not an upgrade of the original data.
 
 Before an upgrade, preserve:

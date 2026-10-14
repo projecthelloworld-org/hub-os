@@ -11,6 +11,13 @@ INTERACTIVE=1
 ASSUME_YES=0
 START_STACK=1
 INSTALL_DOCKER=0
+UPGRADE_REQUESTED=0
+ARCHIVE_WORK=""
+UPGRADE_WORK=""
+UPGRADE_BACKUP=""
+SOURCE_REPLACED=0
+UPGRADE_STOPPED=0
+INSTALL_LOCK=""
 PROFILE="core"
 CADDY_IMAGE="caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648"
 MODE="${HUBOS_INSTALL_MODE:-}"
@@ -30,9 +37,21 @@ warn() { printf '\033[1;33m[HubOS]\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m[HubOS]\033[0m %s\n' "$*" >&2; exit 1; }
 
 restore_terminal() {
+  local result=$?
   if (( TTY_ECHO_DISABLED )) && [[ -w "$TTY_DEVICE" ]]; then stty echo < "$TTY_DEVICE" 2>/dev/null || true; fi
+  if [[ -n "$UPGRADE_BACKUP" && ! -e "$INSTALL_DIR" && -d "$UPGRADE_BACKUP" ]]; then
+    mv "$UPGRADE_BACKUP" "$INSTALL_DIR" || warn "Restore the previous source tree from $UPGRADE_BACKUP before continuing."
+  fi
+  [[ -z "$ARCHIVE_WORK" ]] || rm -rf "$ARCHIVE_WORK"
+  [[ -z "$UPGRADE_WORK" ]] || rm -rf "$UPGRADE_WORK"
+  [[ -z "$INSTALL_LOCK" ]] || rm -rf "$INSTALL_LOCK"
+  if (( result != 0 && UPGRADE_STOPPED )); then
+    warn "Upgrade did not complete. Services may remain paused. Review the configuration and rerun the installer; do not roll back migrated databases by replacing source files alone."
+  fi
 }
-trap restore_terminal EXIT INT TERM
+trap restore_terminal EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 usage() {
   cat <<'EOF'
@@ -46,6 +65,7 @@ Options:
   --install-dir PATH      Installation directory
   --profile PROFILE      core (default) or ecosystem (adds ODK and Headwind)
   --mode MODE            demo (fictional sites) or live (no fictional data)
+  --upgrade              Download the sealed release for an unpacked deployment
   --release-url URL      Release .tar.gz used when running through a pipe
   --release-sha256 HASH  Expected SHA-256 for the release archive
   --install-docker       Offer to install Docker on supported Linux systems
@@ -67,6 +87,7 @@ while (($#)); do
     --release-url) [[ $# -ge 2 ]] || die "--release-url needs a URL"; RELEASE_URL=$2; shift 2 ;;
     --release-sha256) [[ $# -ge 2 ]] || die "--release-sha256 needs a hash"; RELEASE_SHA256=$2; shift 2 ;;
     --install-docker) INSTALL_DOCKER=1; shift ;;
+    --upgrade) UPGRADE_REQUESTED=1; shift ;;
     --no-start) START_STACK=0; shift ;;
     --non-interactive) INTERACTIVE=0; shift ;;
     --yes) ASSUME_YES=1; shift ;;
@@ -213,40 +234,110 @@ script_source_dir() {
   [[ -f "$candidate/compose.yaml" && -f "$candidate/.env.example" ]] && printf '%s' "$candidate"
 }
 
+claim_installation() {
+  local lock="$INSTALL_DIR.install-lock"
+  mkdir "$lock" 2>/dev/null || die "Another installer may be using this directory. Review $lock; remove it only after confirming that no installer is running."
+  INSTALL_LOCK=$lock
+  printf 'pid=%s\n' "$$" > "$INSTALL_LOCK/owner"
+}
+
 download_source() {
-  local target=$1 archive work extracted
+  local target=$1 archive work extracted actual_sha expected_sha package_version
   [[ -n "$RELEASE_URL" ]] || die "This piped installer has no published release URL yet. Set HUBOS_RELEASE_URL or pass --release-url."
+  [[ "$RELEASE_URL" == https://* ]] || die "Release downloads require HTTPS."
+  [[ "$RELEASE_SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || die "The release SHA-256 must contain exactly 64 hexadecimal characters."
   command -v curl >/dev/null 2>&1 || die "curl is required to download HubOS."
   command -v tar >/dev/null 2>&1 || die "tar is required to unpack HubOS."
   [[ ! -e "$target" || -z "$(ls -A "$target" 2>/dev/null || true)" ]] || die "$target is not empty. Choose another --install-dir."
   work=$(mktemp -d)
-  trap 'rm -rf "$work"' RETURN
+  ARCHIVE_WORK=$work
   archive="$work/hubos.tar.gz"
   info "Downloading the HubOS release…"
-  curl --fail --silent --show-error --location "$RELEASE_URL" --output "$archive"
-  if [[ -n "$RELEASE_SHA256" ]]; then
-    [[ "$RELEASE_SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || die "The release SHA-256 must contain exactly 64 hexadecimal characters."
-    if command -v sha256sum >/dev/null 2>&1; then
-      actual_sha=$(sha256sum "$archive" | awk '{print $1}')
-    elif command -v shasum >/dev/null 2>&1; then
-      actual_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
-    else
-      die "sha256sum or shasum is required to verify the release archive."
-    fi
-    actual_sha=$(printf '%s' "$actual_sha" | tr '[:upper:]' '[:lower:]')
-    expected_sha=$(printf '%s' "$RELEASE_SHA256" | tr '[:upper:]' '[:lower:]')
-    [[ "$actual_sha" == "$expected_sha" ]] || die "Release checksum verification failed."
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+    --connect-timeout 15 --max-time 300 "$RELEASE_URL" --output "$archive"
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_sha=$(sha256sum "$archive" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
   else
-    warn "No release checksum was supplied. Published installers must embed HUBOS_RELEASE_SHA256."
+    die "sha256sum or shasum is required to verify the release archive."
   fi
+  actual_sha=$(printf '%s' "$actual_sha" | tr '[:upper:]' '[:lower:]')
+  expected_sha=$(printf '%s' "$RELEASE_SHA256" | tr '[:upper:]' '[:lower:]')
+  [[ "$actual_sha" == "$expected_sha" ]] || die "Release checksum verification failed."
   tar -tzf "$archive" >/dev/null || die "The downloaded release is not a valid gzip archive."
+  tar -tzf "$archive" | awk '
+    /^\// || /(^|\/)\.\.($|\/)/ || /[[:cntrl:]]/ {bad=1}
+    {split($0,p,"/"); if (!root) root=p[1]; if (p[1]!=root) bad=1}
+    END {exit bad || !root}' || die "The release contains unsafe paths or more than one source tree."
+  tar -tvzf "$archive" | awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" {bad=1} END {exit bad}' \
+    || die "Release archives cannot contain links or special files."
   mkdir -p "$work/unpacked" "$target"
   tar -xzf "$archive" -C "$work/unpacked"
   extracted=$(find "$work/unpacked" -mindepth 1 -maxdepth 1 -type d | head -n 1)
   [[ -n "$extracted" && -f "$extracted/compose.yaml" ]] || die "The release does not contain a HubOS source tree."
+  package_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$extracted/services/hubos/package.json" 2>/dev/null || true)
+  [[ "$(basename "$extracted")" == "hubos-v$VERSION" && "$package_version" == "$VERSION" ]] \
+    || die "The package version does not agree with this sealed installer."
+  [[ ! -e "$extracted/.env" && ! -e "$extracted/.hubos-credentials" && ! -e "$extracted/.git" ]] \
+    || die "A release archive must not contain private deployment configuration or a Git checkout."
   cp -R "$extracted"/. "$target"/
-  trap - RETURN
+  printf 'version=%s\nsha256=%s\n' "$VERSION" "$expected_sha" > "$target/.hubos-release"
+  chmod 600 "$target/.hubos-release"
   rm -rf "$work"
+  ARCHIVE_WORK=""
+}
+
+upgrade_source() {
+  local target=$1 namespace previous_mode running path relative old_files
+  [[ ! -L "$target" && ! -e "$target/.git" ]] || die "Automatic release upgrades require an unpacked deployment, not a symbolic link or Git checkout."
+  [[ -f "$target/.env" && ! -L "$target/.env" && ! -L "$target/.hubos-credentials" ]] \
+    || die "An upgrade requires the existing private configuration; configuration files cannot be symbolic links."
+  cd "$target"
+  namespace=$(read_dotenv COMPOSE_PROJECT_NAME "${COMPOSE_PROJECT_NAME:-hubos}")
+  [[ "$namespace" =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]] || die "Invalid saved installation namespace."
+  [[ -z "${COMPOSE_PROJECT_NAME:-}" || "$COMPOSE_PROJECT_NAME" == "$namespace" ]] || die "COMPOSE_PROJECT_NAME conflicts with the saved installation namespace."
+  previous_mode=$(read_dotenv HUBOS_DEMO_MODE false)
+  case "$previous_mode" in true|1) previous_mode=demo ;; false|0) previous_mode=live ;; *) die "Existing HUBOS_DEMO_MODE must be true or false." ;; esac
+  [[ -z "$MODE" || "$MODE" == "$previous_mode" ]] || die "An upgrade cannot change the installation's demo/live mode."
+  confirm "Upgrade this installation to HubOS $VERSION after taking a consistent database and configuration backup" \
+    || die "Upgrade cancelled. The existing installation is unchanged."
+  ensure_dependencies
+  ensure_compose_version
+  check_capacity
+  running=$(docker ps --quiet --filter "label=com.docker.compose.project=$namespace")
+  [[ -z "$running" || "$START_STACK" == 1 ]] || die "Stop this installation before a --no-start upgrade. No files were changed."
+  UPGRADE_WORK=$(mktemp -d "$(dirname "$target")/.hubos-stage.XXXXXX")
+  download_source "$UPGRADE_WORK/release"
+  [[ -f "$UPGRADE_WORK/release/compose/mel.compose.yaml" && -f "$UPGRADE_WORK/release/compose/monitoring.compose.yaml" ]] \
+    || die "The sealed package is not a HubOS monitoring release."
+  mkdir "$UPGRADE_WORK/next"
+  cp -RPp "$target"/. "$UPGRADE_WORK/next"/
+  # Refuse to follow a deployment's links when overlaying managed release files.
+  while IFS= read -r path; do
+    relative=${path#"$UPGRADE_WORK/release/"}
+    [[ ! -L "$UPGRADE_WORK/next/$relative" ]] || die "A managed release path is a symbolic link. Review the deployment before upgrading."
+  done < <(find "$UPGRADE_WORK/release" -mindepth 1 -print)
+  cp -RPp "$UPGRADE_WORK/release"/. "$UPGRADE_WORK/next"/
+  if [[ -n "$running" ]]; then
+    old_files=(-f compose.yaml)
+    for path in compose/mel.compose.yaml compose/monitoring.compose.yaml; do [[ ! -f "$path" ]] || old_files+=(-f "$path"); done
+    [[ "$previous_mode" != demo || ! -f compose/development.compose.yaml ]] || old_files+=(-f compose/development.compose.yaml)
+    [[ "$PROFILE" != ecosystem || ! -f compose/ecosystem.compose.yaml || ! -d vendor/odk-central ]] || old_files+=(-f compose/ecosystem.compose.yaml)
+    info "Pausing this installation before replacing its managed source files…"
+    UPGRADE_STOPPED=1
+    docker compose -p "$namespace" "${old_files[@]}" stop
+  fi
+  UPGRADE_BACKUP="$target.pre-upgrade-$(random_secret 4)"
+  [[ ! -e "$UPGRADE_BACKUP" && ! -L "$UPGRADE_BACKUP" ]] || die "The selected backup path already exists. No source files were moved."
+  cd "$(dirname "$target")"
+  mv "$target" "$UPGRADE_BACKUP"
+  chmod 700 "$UPGRADE_BACKUP"
+  mv "$UPGRADE_WORK/next" "$target"
+  SOURCE_REPLACED=1
+  info "Previous source and private configuration retained at $UPGRADE_BACKUP. This is not a database backup."
+  rm -rf "$UPGRADE_WORK"
+  UPGRADE_WORK=""
 }
 
 docker_ready() {
@@ -364,10 +455,21 @@ if [[ -n "$source_dir" ]]; then
   INSTALL_DIR=${INSTALL_DIR:-$source_dir}
 else
   INSTALL_DIR=${INSTALL_DIR:-${HUBOS_INSTALL_DIR:-$HOME/hubos}}
-  if [[ ! -f "$INSTALL_DIR/compose.yaml" ]]; then
-    mkdir -p "$INSTALL_DIR"
-    download_source "$INSTALL_DIR"
+fi
+[[ ! -L "$INSTALL_DIR" ]] || die "The installation directory must not be a symbolic link."
+mkdir -p "$INSTALL_DIR"
+INSTALL_DIR=$(CDPATH= cd -- "$INSTALL_DIR" && pwd)
+claim_installation
+if [[ -f "$INSTALL_DIR/compose.yaml" ]]; then
+  if (( UPGRADE_REQUESTED )) || [[ -z "$source_dir" ]]; then
+    if [[ ! -f "$INSTALL_DIR/.hubos-release" ]] \
+      || ! grep -Fxq "version=$VERSION" "$INSTALL_DIR/.hubos-release" \
+      || ! grep -Fxiq "sha256=$RELEASE_SHA256" "$INSTALL_DIR/.hubos-release"; then
+      upgrade_source "$INSTALL_DIR"
+    fi
   fi
+else
+  download_source "$INSTALL_DIR"
 fi
 INSTALL_DIR=$(CDPATH= cd -- "$INSTALL_DIR" && pwd)
 cd "$INSTALL_DIR"
@@ -635,7 +737,9 @@ fi
 
 if (( START_STACK )); then
   info "Building and starting HubOS. The first run can take several minutes…"
-  docker compose "${COMPOSE_FILES[@]}" up --build -d
+  recreate=()
+  (( ! SOURCE_REPLACED )) || recreate=(--force-recreate)
+  docker compose "${COMPOSE_FILES[@]}" up --build -d "${recreate[@]}"
   wait_for_setup
 fi
 

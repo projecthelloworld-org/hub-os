@@ -1,6 +1,11 @@
 // External Docker CLI adapter for installer contract tests; never starts services.
 const args = process.argv.slice(2);
 if (args[0] === 'info') process.exit(0);
+if (args[0] === 'ps') {
+  if (process.env.INSTALLER_FIXTURE_RUNNING_PROJECT === 'true') console.log('fixture-running-container');
+  process.exit(0);
+}
+if (args[0] === 'compose' && args.includes('stop')) process.exit(0);
 if (args[0] === 'compose' && args[1] === 'version') {
   console.log(process.env.INSTALLER_FIXTURE_COMPOSE_VERSION ?? '2.29.7');
   process.exit(0);
