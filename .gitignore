@@ -1,5 +1,6 @@
 .DS_Store
 .env
+.hubos-credentials
 config/kuma/monitors.json
 config/plugins/local.json
 config/source-secrets.env

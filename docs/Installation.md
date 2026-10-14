@@ -38,6 +38,16 @@ Follow [contributor setup](Local_Development.md) rather than assuming that an in
 
 Default local addresses are HubOS `http://localhost:8080`, Metabase `http://localhost:3001`, Kuma `http://localhost:3002` and Mailpit `http://localhost:8025`. Tool availability depends on the installed release and enabled layers.
 
+The v0.2.0 source installer offers `--mode demo` and `--mode live`. Demonstration mode includes fictional community sites; live mode excludes the seed layer and unconfigured sources. These options are not available in the published v0.1.0 installer.
+
+```sh
+./install.sh --mode live
+```
+
+Interactive setup collects operator, Metabase and Kuma account details. It generates independent service/reporting and source-webhook credentials, hashes the operator password with the pinned Caddy image and keeps administrator passwords in `.hubos-credentials`, readable only by its owner. Passwords are not printed to terminal logs. Protect that file alongside `.env`; do not commit, share or source it as a shell script.
+
+The source installer includes the monitoring layer and waits for successful migration, dashboard and Kuma provisioning as well as application health. A failed provisioning task is an installation failure, even if a dashboard application is already reachable. `--no-start` prepares and validates configuration but does not prove that provisioning or connections have succeeded.
+
 Synthetic demonstration records must stay separate from live data. Do not reseed a live deployment or interpret generated faults as field observations.
 
 ## Unattended installation
@@ -59,10 +69,12 @@ A reviewed mirror archive requires both `HUBOS_RELEASE_URL` and its verified `HU
 
 The installer preserves an existing `.env` rather than silently rotating credentials attached to persistent databases. Changing a database password in `.env` alone does not rotate the password in that database.
 
+The source installer adds missing monitoring settings without replacing existing database passwords, application encryption keys or tool accounts. Repeated setup preserves those settings. An installation cannot silently change from demonstration to live mode: use a separate directory and fresh volumes so fictional history is not mistaken for operational evidence.
+
 Before an upgrade, preserve:
 
 - HubOS PostgreSQL and Metabase application databases.
-- Installation configuration, source secret files and encryption keys.
+- Installation configuration, `.hubos-credentials`, source secret files and encryption keys.
 - Kuma data and HubOS-managed secret storage where present.
 - Caddy certificate/configuration storage.
 - Optional ODK/Headwind data according to upstream backup procedures.

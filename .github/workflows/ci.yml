@@ -34,6 +34,7 @@ jobs:
       - run: bun test
         env:
           HUBOS_TEST_DATABASE_URL: postgresql://hubos_test:fixture-only-not-for-deployment@127.0.0.1:15432/hubos_test
+          HUBOS_TEST_INSTALLER_CONFIG: "true"
           HUBOS_TEST_KUMA_URL: http://127.0.0.1:13002
           HUBOS_TEST_METABASE_URL: http://127.0.0.1:13021
           # Kuma's ephemeral host receiver must be reachable from its container.
