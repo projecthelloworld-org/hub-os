@@ -105,8 +105,8 @@ suite('Core backup and recovery (owned native installer fixture)', () => {
     expect(await readFile(join(restored, '.hubos-credentials'), 'utf8')).toBe(await readFile(join(directory, '.hubos-credentials'), 'utf8'));
     // Only this isolated fixture receives alternate loopback ports before startup.
     await writeFile(join(restored, '.env'), configuration + '\nHUBOS_HTTP_PORT=19180\nMETABASE_PORT=19181\nKUMA_PORT=19182\nMAILPIT_WEB_PORT=19185\n', { mode: 0o600 });
-    const start = await run(['docker', 'compose', '-p', restoreProject, ...files, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', '180'], 240000, restored);
-    if (start.status !== 0) throw new Error('Isolated restored fixture did not provision successfully');
+    const start = await run(['docker', 'compose', '-p', restoreProject, ...files, 'up', '--detach', '--no-build'], 240000, restored);
+    if (start.status !== 0) throw new Error('Isolated restored fixture did not start successfully');
     const deadline = performance.now() + 180000;
     let provisioned = false;
     while (performance.now() < deadline) {
@@ -119,7 +119,17 @@ suite('Core backup and recovery (owned native installer fixture)', () => {
         if (state.stdout.startsWith('exited|') && state.stdout.trim() !== 'exited|0') throw new Error(`Restored ${name} provisioning failed`);
         states.push(state.stdout.trim());
       }
-      if (states.every((state) => state === 'exited|0')) { provisioned = true; break; }
+      if (states.every((state) => state === 'exited|0')) {
+        const applications = [];
+        for (const name of ['db', 'metabase-db', 'api', 'worker', 'caddy', 'metabase', 'kuma']) {
+          const id = await run(['docker', 'compose', '-p', restoreProject, ...files, 'ps', '--all', '-q', name], 30000, restored);
+          if (id.status !== 0 || !id.stdout.trim()) throw new Error('Restored application container missing');
+          const state = await run(['docker', 'inspect', '--format', '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}', id.stdout.trim()]);
+          if (state.status !== 0 || state.stdout.startsWith('exited|')) throw new Error(`Restored ${name} application failed`);
+          applications.push(state.stdout.trim());
+        }
+        if (applications.every((state) => ['running|', 'running|healthy'].includes(state))) { provisioned = true; break; }
+      }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     expect(provisioned).toBe(true);
