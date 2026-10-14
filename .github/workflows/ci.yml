@@ -169,6 +169,28 @@ jobs:
         if: always()
         run: docker compose -p hubos-v02-odk-test -f compose/odk-test.compose.yaml down --volumes
 
+  installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+        working-directory: services/hubos
+      - name: Verify actual fresh and repeat installation with private isolated services
+        run: bun test test/installer.integration.test.js
+        working-directory: services/hubos
+        env:
+          HUBOS_TEST_INSTALLER_PROJECT: hubos-ci-installer-test
+      - name: Report only owned installer service state
+        if: failure()
+        run: docker ps -a --filter label=com.docker.compose.project=hubos-ci-installer-test --format '{{.Names}} {{.Status}}'
+      - name: Clean only disposable installer services and storage
+        if: always()
+        run: docker compose -p hubos-ci-installer-test -f compose.yaml -f compose/mel.compose.yaml -f compose/monitoring.compose.yaml down --volumes
+
   sbom:
     runs-on: ubuntu-latest
     permissions:

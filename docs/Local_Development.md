@@ -84,8 +84,11 @@ Fixtures use explicit project names, guarded endpoints, isolated volumes and pub
 - `compose/headwind-test.compose.yaml`: Community inventory, check-in clocks and reader permissions.
 - `compose/odk-test.compose.yaml`: API-only Central, approved OData, reader permissions and upstream form validation.
 - `compose/access-test.compose.yaml`: actual HubOS API behind authenticated Caddy.
+- `services/hubos/test/installer.integration.test.js`: the real installer on fresh private storage, followed by repeat setup with retained accounts, a live fixture site and an operator-customized dashboard. It creates a tracked source copy and a separate image tag; it does not reuse an existing deployment.
 
 The [CI workflow](../.github/workflows/ci.yml) is the reproducible command reference. Keep test fixtures and credentials inside test tooling; user guides should explain supported operation, not recount individual runs.
+
+For the native installer rehearsal, set `HUBOS_TEST_INSTALLER_PROJECT=hubos-v02-installer-live-test` and run `bun test test/installer.integration.test.js` from `services/hubos`. The guarded project must have no containers or retained volumes, and loopback ports 19080, 19081, 19082 and 19085 must be available. The suite stops its applications afterward and retains its private configuration/data for diagnostics. Explicitly clean only that disposable project before another fresh rehearsal. This test covers a source installation; a sealed release archive and v0.1.0 package upgrade require their own release checks.
 
 The native Metabase suite starts an ephemeral HubOS receiver on its own private Compose network. Set `HUBOS_TEST_METABASE_PROJECT` to the guarded fixture project name. This exercises the same private webhook destination as an installation without relying on host-gateway aliases or weakening Metabase's network policy.
 

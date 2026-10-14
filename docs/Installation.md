@@ -48,6 +48,8 @@ Interactive setup collects operator, Metabase and Kuma account details. It gener
 
 The source installer includes the monitoring layer and waits for successful migration, dashboard and Kuma provisioning as well as application health. A failed provisioning task is an installation failure, even if a dashboard application is already reachable. `--no-start` prepares and validates configuration but does not prove that provisioning or connections have succeeded.
 
+New Metabase instances do not load its unrelated sample commerce database or dashboards. HubOS supplies its own community-focused dashboards and explicitly selected demonstration data instead. This uses Metabase's supported [sample-content setting](https://www.metabase.com/docs/latest/configuring-metabase/environment-variables#mb_load_sample_content), not a cleanup that deletes existing operator resources.
+
 Synthetic demonstration records must stay separate from live data. Do not reseed a live deployment or interpret generated faults as field observations.
 
 ## Unattended installation
