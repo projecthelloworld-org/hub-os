@@ -6,7 +6,7 @@ umask 077
 
 VERSION="0.2.0"
 DEFAULT_RELEASE_URL="https://github.com/projecthelloworld-org/hub-os/releases/download/v0.2.0/hubos-v0.2.0.tar.gz"
-DEFAULT_RELEASE_SHA256=""
+DEFAULT_RELEASE_SHA256="f6643561f79f204a855aa9a3ad2dfc446103139654951aa913fa5ada8a07d08a"
 INTERACTIVE=1
 ASSUME_YES=0
 START_STACK=1
