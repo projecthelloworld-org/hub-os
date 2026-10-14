@@ -1,3 +1,5 @@
+import packageMetadata from '../package.json' with { type: 'json' };
+
 const developmentPlaceholders = new Set([
   "local-demo-ingest-key",
   "local-demo-admin-key",
@@ -47,7 +49,7 @@ export function loadConfig(env = process.env) {
     operatorOrigin,
     workerPollIntervalMs: readInteger(env.HUBOS_WORKER_POLL_INTERVAL_MS, 2000),
     workerLeaseSeconds: readInteger(env.HUBOS_WORKER_LEASE_SECONDS, 300),
-    version: env.HUBOS_VERSION ?? "0.1.0",
+    version: env.HUBOS_VERSION ?? packageMetadata.version,
   };
 
   if (config.workerLeaseSeconds < 30 || config.workerLeaseSeconds > 3600) {

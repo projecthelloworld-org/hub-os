@@ -22,12 +22,12 @@ curl -fsSL https://hubos.myhellohub.org/install.sh | bash
 
 Review a downloaded script before execution. The installer reads answers from the terminal even when piped, verifies the embedded archive checksum and extracts the selected package. It asks for bind/port settings and Metabase administrator details, generates independent service secrets and creates an owner-readable `.env`.
 
-The public endpoint follows GitHub's latest stable release, excluding drafts/prereleases. It currently serves v0.1.0, a demonstration package—not the full upcoming monitoring release. [The roadmap](Roadmap.md) defines that distinction.
+The public endpoint follows GitHub's latest stable release, excluding drafts/prereleases. Check the linked release notes before deployment. The earlier v0.1.0 package is a demonstration scaffold; v0.2.0 adds community-site monitoring. [The roadmap](Roadmap.md) defines those boundaries.
 
-For a fixed release:
+For a fixed release, use the required published tag:
 
 ```sh
-curl -fsSL https://hubos.myhellohub.org/releases/v0.1.0/install.sh | bash
+curl -fsSL https://hubos.myhellohub.org/releases/v0.2.0/install.sh | bash
 ```
 
 The installer is a separate release asset, excluded from the checksum-sealed archive. Download it alongside an unpacked release, or use the versioned URL above. From a release checkout containing the script, run `./install.sh`. Use `./install.sh --help` for its exact options. `--profile ecosystem` includes optional ODK Central and Headwind MDM; these require additional resources and upstream configuration.
@@ -38,7 +38,7 @@ Follow [contributor setup](Local_Development.md) rather than assuming that an in
 
 Default local addresses are HubOS `http://localhost:8080`, Metabase `http://localhost:3001`, Kuma `http://localhost:3002` and Mailpit `http://localhost:8025`. Tool availability depends on the installed release and enabled layers.
 
-The v0.2.0 source installer offers `--mode demo` and `--mode live`. Demonstration mode includes fictional community sites; live mode excludes the seed layer and unconfigured sources. These options are not available in the published v0.1.0 installer.
+The v0.2.0 installer offers `--mode demo` and `--mode live`. Demonstration mode includes fictional community sites; live mode excludes the seed layer and unconfigured sources. These options are not available in the v0.1.0 installer.
 
 ```sh
 ./install.sh --mode live
@@ -54,7 +54,7 @@ Synthetic demonstration records must stay separate from live data. Do not reseed
 
 ## Unattended installation
 
-Provide release-supported settings through a protected environment or secret manager. For the v0.1.0 installer:
+Provide release-supported settings through a protected environment or secret manager. For v0.2.0:
 
 ```sh
 METABASE_ADMIN_EMAIL=operator@example.org \

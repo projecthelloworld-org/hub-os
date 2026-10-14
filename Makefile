@@ -9,7 +9,7 @@ ECOSYSTEM_COMPOSE = $(COMPOSE) -f compose/ecosystem.compose.yaml
 	ecosystem-setup ecosystem-config ecosystem-up ecosystem-down ecosystem-logs release
 
 help:
-	@echo "HubOS scaffold commands"
+	@echo "HubOS commands"
 	@echo "  make install          Install Bun development dependencies"
 	@echo "  make installer        Run the interactive system installer"
 	@echo "  make test             Run the Bun test suite"
@@ -21,7 +21,7 @@ help:
 	@echo "  make seed             Reapply the synthetic Uganda and Angola demo"
 	@echo "  make ecosystem-setup  Fetch pinned ODK Central and Headwind MDM projects"
 	@echo "  make ecosystem-up     Start HubOS, Metabase, ODK Central and Headwind MDM"
-	@echo "  make release          Build the v0.1.0 archive, SBOM and checksums"
+	@echo "  make release          Build the v0.2.0 archive, SBOM and checksums"
 
 install:
 	cd services/hubos && bun install --frozen-lockfile
@@ -76,4 +76,4 @@ ecosystem-logs:
 	$(ECOSYSTEM_COMPOSE) logs -f
 
 release:
-	./scripts/build-release.sh 0.1.0
+	./scripts/build-release.sh 0.2.0

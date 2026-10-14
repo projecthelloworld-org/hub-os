@@ -13,9 +13,34 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
       - name: Verify release artifacts
         working-directory: release
         run: sha256sum --check SHA256SUMS
+      - name: Verify sealed installer and package version
+        run: |
+          bun -e '
+            import { createHash } from "node:crypto";
+            import { spawnSync } from "node:child_process";
+            import { repository, validateReleaseInstaller } from "./scripts/build-pages.js";
+            const tag = process.env.GITHUB_REF_NAME;
+            if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error("A stable semantic release tag is required");
+            const name = `hubos-${tag}.tar.gz`;
+            const archive = `release/${name}`;
+            const metadata = JSON.parse(await Bun.file("services/hubos/package.json").text());
+            const packed = spawnSync("tar", ["-xOf", archive, `hubos-${tag}/services/hubos/package.json`], { encoding: "utf8" });
+            if (packed.status !== 0 || `v${metadata.version}` !== tag || JSON.parse(packed.stdout).version !== metadata.version) {
+              throw new Error("Archive, package and tag versions must agree");
+            }
+            const archiveHash = createHash("sha256").update(new Uint8Array(await Bun.file(archive).arrayBuffer())).digest("hex");
+            const url = `https://github.com/${repository}/releases/download/${tag}/${name}`;
+            validateReleaseInstaller({ release: { tag_name: tag, draft: false, prerelease: false,
+              assets: [{ name, browser_download_url: url }, { name: "SHA256SUMS" }] },
+              installer: await Bun.file("install.sh").text(), checksums: await Bun.file("release/SHA256SUMS").text(), archiveHash });
+            console.log("Verified sealed release metadata and installer");
+          '
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -24,6 +49,7 @@ jobs:
             "release/hubos-$GITHUB_REF_NAME.tar.gz" \
             "release/hubos-$GITHUB_REF_NAME.spdx.json" \
             release/SHA256SUMS \
+            install.sh \
             --verify-tag \
-            --generate-notes \
+            --notes-file "docs/releases/$GITHUB_REF_NAME.md" \
             --title "HubOS $GITHUB_REF_NAME"

@@ -10,7 +10,7 @@ Its demonstration contains five fictional school sites in Uganda and five in Ang
 
 ## v0.2.0 — community-site monitoring
 
-The next release focuses on monitoring and supporting community connectivity:
+This release focuses on monitoring and supporting community connectivity:
 
 - Community sites as the primary concept, with a mixed school, community-centre and library demonstration.
 - Four automatically provisioned Metabase dashboards, read-only analytics and data-based alerts.
@@ -22,7 +22,7 @@ The next release focuses on monitoring and supporting community connectivity:
 - Separate demonstration/live installation modes, provisioning checks and private defaults.
 - Basic operator access, source-specific credentials, data minimisation and backup/restore procedures.
 
-Publication requires fresh/repeat installation, compatibility, upgrade, privacy, alert, restore and CI checks. Until publication, the public installer continues to serve v0.1.0. These release requirements do not imply full multi-partner production hosting.
+Release verification covers fresh/repeat installation, dashboard layouts and filters, compatibility, upgrade, privacy, alerts, restoration and CI. The public installer follows the latest published stable release; source changes alone do not change that endpoint. These capabilities do not imply full multi-partner production hosting.
 
 ## v0.3.0 — broader collection and intermittent connectivity
 

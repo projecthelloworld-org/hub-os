@@ -14,7 +14,7 @@ curl -fsSL https://hubos.myhellohub.org/install.sh | bash
 
 The installer runs interactively in your terminal, checks dependencies and verifies the release archive before extraction. Review a downloaded script before running it. See the [installation guide](docs/Installation.md) for requirements, version selection and configuration.
 
-The latest published release is **v0.1.0**, a synthetic demonstration package. It does not include the complete monitoring capabilities described by the upcoming v0.2.0 release. Use the documentation at your installed release tag, and consult the [roadmap](docs/Roadmap.md) before selecting features for a deployment. Unpublished source changes do not alter the stable installer.
+This source tree contains **v0.2.0 community-site monitoring**. The stable installer follows the latest published GitHub release; unpublished source changes do not alter it. Use the documentation at your installed release tag and the [roadmap](docs/Roadmap.md) when selecting capabilities. The earlier v0.1.0 package is a synthetic demonstration scaffold, not the complete monitoring product.
 
 Before running v0.1.0, read its [Metabase security warning](docs/Metabase_Compatibility.md). Its bundled 0.60.7 image predates a critical fix and must not be exposed publicly.
 

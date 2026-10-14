@@ -2,8 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import { loadConfig } from "../src/config.js";
 import { stableId } from "../src/ids.js";
+import { buildOpenApi } from '../src/openapi.js';
 
 describe("configuration safety", () => {
+  test('runtime and API descriptions report the community monitoring release version', () => {
+    expect(loadConfig({}).version).toBe('0.2.0');
+    expect(buildOpenApi().info.version).toBe('0.2.0');
+    expect(loadConfig({ HUBOS_VERSION: 'fixture' }).version).toBe('fixture');
+  });
   test("keeps deterministic canonical identifiers", () => {
     expect(stableId("site", "UG-DEMO-01")).toBe(stableId("site", "UG-DEMO-01"));
     expect(stableId("site", "UG-DEMO-01")).not.toBe(stableId("site", "UG-DEMO-02"));

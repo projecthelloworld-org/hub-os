@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-version=${1:-0.1.0}
+version=${1:-0.2.0}
 root_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 release_dir="$root_dir/release"
 archive_name="hubos-v$version.tar.gz"

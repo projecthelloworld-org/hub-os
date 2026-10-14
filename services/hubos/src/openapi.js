@@ -1,4 +1,6 @@
-export function buildOpenApi(version = "0.1.0") {
+import packageMetadata from '../package.json' with { type: 'json' };
+
+export function buildOpenApi(version = packageMetadata.version) {
   const siteMetadata = {
     name: { type: 'string', minLength: 1, maxLength: 160 },
     country_code: { type: 'string', pattern: '^[A-Za-z]{2}$' },
