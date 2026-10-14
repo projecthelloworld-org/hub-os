@@ -85,11 +85,25 @@ Fixtures use explicit project names, guarded endpoints, isolated volumes and pub
 - `compose/headwind-test.compose.yaml`: Community inventory, check-in clocks and reader permissions.
 - `compose/odk-test.compose.yaml`: API-only Central, approved OData, reader permissions and upstream form validation.
 - `compose/access-test.compose.yaml`: actual HubOS API behind authenticated Caddy.
+- `services/hubos/test/console.browser.integration.test.js`: authenticated desktop/mobile console, keyboard country filtering, missing-data handling and incident ownership/resolution. All screenshots contain fictional data only.
 - `compose/tls-test.compose.yaml` with the access and TLS layers: hostname-verified HTTPS, certificate trust failure, HTTP redirects and operator-origin checks. It uses an isolated local CA and never changes host trust or public DNS.
 - `services/hubos/test/installer.integration.test.js`: the real installer on fresh private storage, followed by repeat setup with retained accounts, a live fixture site and an operator-customized dashboard. It creates a tracked source copy and a separate image tag; it does not reuse an existing deployment.
 - `services/hubos/test/backup.integration.test.js`: a maintenance-paused snapshot of that disposable installer, fresh-volume restoration, retained site/tool identities and graceful cancellation. The original fixture is preserved; the target must have no retained containers or volumes.
 
 The [CI workflow](../.github/workflows/ci.yml) provides reproducible commands and the environment settings for each suite. Test output belongs in the pull request or CI artifacts; never attach private deployment configuration or source credentials.
+
+For console browser checks, install the pinned Chromium build and start the disposable access fixture:
+
+```sh
+cd services/hubos
+bun node_modules/playwright/cli.js install chromium
+cd ../..
+docker compose -p hubos-v02-access-test -f compose/access-test.compose.yaml up -d --wait
+cd services/hubos
+HUBOS_TEST_CONSOLE_URL=http://127.0.0.1:13041/ bun test test/console.browser.integration.test.js
+```
+
+On Linux, use `install --with-deps chromium` to install browser system dependencies as well. Browser checks modify only the fixture's fictional incident. Restart its API before another run, or after the separate access suite, to reset its in-memory data; then wait for health using the same Compose startup command. Screenshots are written to `output/playwright/` and excluded from source control. Chromium and Playwright are test tools, not production runtime dependencies.
 
 For the native installer rehearsal, set `HUBOS_TEST_INSTALLER_PROJECT=hubos-v02-installer-live-test` and run `bun test test/installer.integration.test.js` from `services/hubos`. The guarded project must have no containers or retained volumes, and loopback ports 19080, 19081, 19082 and 19085 must be available. The suite stops its applications afterward and retains its private configuration/data for diagnostics. Explicitly clean only that disposable project before another fresh rehearsal. This test covers a source installation; a sealed release archive and v0.1.0 package upgrade require their own release checks.
 

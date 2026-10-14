@@ -65,7 +65,7 @@ function homePage(latest, versions) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Install HubOS, the open-source operations layer for school connectivity.">
+  <meta name="description" content="Install HubOS, the open-source operations layer for community connectivity.">
   <title>Install HubOS</title>
   <style>
     :root{color-scheme:light;--cream:#faf7f2;--ink:#222;--orange:#e76031;--orange-dark:#a83d1b;--muted:#636464;--line:#22222229}
@@ -102,7 +102,7 @@ function homePage(latest, versions) {
     </a>
     <span class="version">Latest stable: ${htmlEscape(latest.tag)}</span>
   </header>
-  <h1>Keep school connectivity working.</h1>
+  <h1>Keep community connectivity working.</h1>
   <p class="lead">HubOS brings connectivity, power, devices, and support into a shared operational view. Run the open-source stack on your own infrastructure.</p>
   <section aria-labelledby="install-heading">
     <h2 id="install-heading" class="section-title">Install from your terminal</h2>

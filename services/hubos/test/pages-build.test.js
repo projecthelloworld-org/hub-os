@@ -125,7 +125,7 @@ describe("Pages homepage", () => {
   test("keeps the compact content, branding, release links and accessible copy control", () => {
     for (const content of [
       "--cream:#faf7f2", "--ink:#222", "--orange:#e76031", 'src="data:image/svg+xml,',
-      "Keep school connectivity working.", "Latest stable: v0.1.0", "Versioned installers",
+      "Keep community connectivity working.", "Latest stable: v0.1.0", "Versioned installers",
       'href="https://github.com/projecthelloworld-org/hub-os/blob/main/docs/Installation.md"',
       'href="./releases/v0.1.0/install.sh"', 'aria-labelledby="install-heading"',
       'aria-label="Copy installation command"', 'aria-describedby="copy-feedback" hidden>',

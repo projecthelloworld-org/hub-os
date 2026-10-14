@@ -22,7 +22,8 @@
     "db:status": "bunx dbmate --migrations-dir ../../db/migrations status"
   },
   "devDependencies": {
-    "dbmate": "2.30.0"
+    "dbmate": "2.30.0",
+    "playwright": "1.64.0"
   },
   "dependencies": {
     "nodemailer": "10.1.0",

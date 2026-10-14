@@ -2,6 +2,14 @@
 
 HubOS combines reachability, source freshness, device check-ins, operational reports and incident history. Read evidence quality and scope alongside the apparent status: unknown is not healthy.
 
+## Operator console
+
+The authenticated console shows community-site status, current incidents and installation-wide collection freshness. Use country filters to review a subset of sites; infrastructure incidents remain visible because they affect the shared installation. Expand a connectivity, power or device status to read its evidence. A site is operating normally only when all three domains have current healthy evidence.
+
+Open an incident's response controls to assign a responsible team, acknowledge it or record a manual resolution with supporting evidence. Manual resolution is a support record, not a measured recovery. Console actions use operator authentication; never enter machine ingestion or webhook keys in the browser.
+
+Demonstration mode labels fictional sites and synthetic evidence. An unconfigured live installation shows an empty register rather than fictional healthy sites. If an overview cannot be refreshed, its previous status claims are cleared; use the retry control before making a decision.
+
 ## Dashboards
 
 Metabase templates provide Community Operations, Availability & Connectivity, Devices & Field Evidence, and Collection & Support. Site, country and date controls support operational review; generic telemetry can show canonical metrics from additional plugins.

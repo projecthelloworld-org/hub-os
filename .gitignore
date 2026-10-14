@@ -25,5 +25,6 @@ dist/
 build/
 *.egg-info/
 tmp/
+output/playwright/
 vendor/*
 !vendor/README.md

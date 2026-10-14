@@ -1,6 +1,7 @@
 import indexHtml from "../public/index.html" with { type: "text" };
 import appCss from "../public/app.css" with { type: "text" };
 import appJs from "../public/app.js" with { type: "text" };
+import { createHash } from 'node:crypto';
 
 import { listConnectorManifests, getConnector } from "./connectors/registry.js";
 import { json, noContent, readJson, requestHasKey, text } from "./http.js";
@@ -22,6 +23,7 @@ const securityHeaders = {
   "referrer-policy": "no-referrer",
   "content-security-policy": "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
 };
+const consoleHtml = indexHtml.replaceAll('__HUBOS_ASSET_VERSION__', createHash('sha256').update(appCss + appJs).digest('hex').slice(0, 16));
 
 function withSecurity(response) {
   const headers = new Headers(response.headers);
@@ -73,7 +75,7 @@ export function createApp({ store, config, resolveSecrets = resolveCredentials, 
       }
       if (request.method === "GET" && path === "/") {
         if (!config.operatorConsoleEnabled) return withSecurity(json({ error: "Operator console disabled" }, 404));
-        return withSecurity(text(indexHtml, "text/html; charset=utf-8"));
+        return withSecurity(text(consoleHtml, "text/html; charset=utf-8"));
       }
       if (request.method === "GET" && path === "/static/app.css") {
         return withSecurity(text(appCss, "text/css; charset=utf-8", 200, { "cache-control": "public, max-age=300" }));
@@ -85,7 +87,8 @@ export function createApp({ store, config, resolveSecrets = resolveCredentials, 
         return withSecurity(json(buildOpenApi(config.version)));
       }
       if (request.method === "GET" && path === "/api/v1/overview") {
-        return withSecurity(json(await store.getDashboardData()));
+        return withSecurity(json({ ...await store.getDashboardData(),
+          installation: { mode: config.demoMode ? 'demo' : 'live', version: config.version } }, 200, { 'cache-control': 'no-store' }));
       }
       if (request.method === 'GET' && path === '/api/v1/organisations') {
         return withSecurity(json({ organisations: await store.listOrganisations() }));

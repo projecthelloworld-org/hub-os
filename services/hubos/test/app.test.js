@@ -36,8 +36,24 @@ describe("health and operator console", () => {
     const response = await request("/");
     expect(response.status).toBe(200);
     expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
-    expect(await response.text()).toContain("Know what needs attention");
+    const html = await response.text();
+    expect(html).toContain('Community operations');
+    expect(html).toContain('aria-label="Console sections"');
+    expect(html).toMatch(/\/static\/app\.css\?v=[a-f0-9]{16}/);
+    expect(html).not.toContain('__HUBOS_ASSET_VERSION__');
     expect((await request("/static/app.css")).headers.get("content-type")).toContain("text/css");
+  });
+  test('the console receives only non-secret installation mode metadata and supports a live empty register', async () => {
+    const demo = await (await request('/api/v1/overview')).json();
+    expect(demo.installation).toEqual({ mode: 'demo', version: config.version });
+    const live = createApp({ store: new MemoryStore({ organisation: buildDemoState().organisation,
+      sites: [], statuses: [], sourceConnections: [], mappings: [], incidents: [], observations: [], connectorJobs: [] }),
+      config: { ...config, demoMode: false } });
+    const overview = await (await live(new Request('http://hubos.test/api/v1/overview'))).json();
+    expect(overview.installation).toEqual({ mode: 'live', version: config.version });
+    expect(overview.sites).toEqual([]);
+    expect(JSON.stringify(overview)).not.toContain(config.adminKey);
+    expect(JSON.stringify(overview)).not.toContain(config.ingestKey);
   });
 });
 

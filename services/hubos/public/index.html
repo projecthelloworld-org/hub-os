@@ -4,21 +4,24 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
-    <meta name="description" content="HubOS school connectivity operations console">
-    <title>HubOS · School connectivity operations</title>
-    <link rel="stylesheet" href="/static/app.css?v=0.1.0">
-    <script src="/static/app.js?v=0.1.0" type="module"></script>
+    <meta name="description" content="HubOS community-site monitoring and support console">
+    <title>HubOS · Community operations</title>
+    <link rel="stylesheet" href="/static/app.css?v=__HUBOS_ASSET_VERSION__">
+    <script src="/static/app.js?v=__HUBOS_ASSET_VERSION__" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to operations overview</a>
     <header class="masthead">
       <a class="wordmark" href="/" aria-label="HubOS home">
-        <span class="wordmark-mark" aria-hidden="true">H</span>
         <span>HubOS</span>
       </a>
-      <p class="masthead-context"><span class="live-dot" aria-hidden="true"></span> Demonstration environment</p>
+      <nav class="console-navigation" aria-label="Console sections">
+        <a href="#main">Overview</a>
+        <a href="#sites-title">Monitoring</a>
+        <a href="#sources-title">Collection</a>
+      </nav>
       <div class="masthead-actions">
-        <p id="updated-at" class="updated-at" aria-live="polite">Preparing field view…</p>
+        <p id="updated-at" class="updated-at" aria-live="polite">Loading overview…</p>
         <button id="refresh-button" class="button button-secondary" type="button">Refresh</button>
       </div>
     </header>
@@ -26,43 +29,39 @@
     <main id="main">
       <section class="hero" aria-labelledby="page-title">
         <div>
-          <p class="eyebrow">School connectivity / operations desk</p>
-          <h1 id="page-title">Know what needs attention.</h1>
-          <p class="lede">A shared view of connectivity, power, and managed devices across ten synthetic school sites in Uganda and Angola.</p>
+          <p id="installation-mode" class="masthead-context">Loading installation…</p>
+          <h1 id="page-title">Community operations</h1>
+          <p id="installation-description" class="lede">Monitoring and support for schools, community centres, libraries and other shared spaces.</p>
         </div>
         <div class="hero-note">
-          <span class="hero-note-index">01</span>
-          <p><strong>Built for action.</strong> Status is current evidence, not a performance score. Investigate before escalating.</p>
+          <p><strong>Evidence before action.</strong> Unknown is not healthy. Infrastructure checks do not prove that a community can use the internet.</p>
         </div>
       </section>
 
       <div id="error-banner" class="notice notice-error" role="alert" hidden>
-        <div><strong>Field view unavailable</strong><span id="error-message">The current data could not be loaded.</span></div>
+        <div><strong>Overview unavailable</strong><span id="error-message">The current data could not be loaded.</span></div>
         <button id="retry-button" class="button button-dark" type="button">Try again</button>
       </div>
 
       <section class="summary" aria-labelledby="summary-title">
         <div class="section-heading summary-heading">
           <div>
-            <p class="eyebrow">Current position</p>
-            <h2 id="summary-title">Network at a glance</h2>
+            <h2 id="summary-title">Sites at a glance</h2>
           </div>
-          <div class="filters" role="group" aria-label="Filter schools by country">
+          <div id="country-filters" class="filters" role="group" aria-label="Filter community sites by country">
             <button class="filter is-active" type="button" data-country="ALL" aria-pressed="true">All</button>
-            <button class="filter" type="button" data-country="UG" aria-pressed="false">Uganda</button>
-            <button class="filter" type="button" data-country="AO" aria-pressed="false">Angola</button>
           </div>
         </div>
         <div class="summary-grid" aria-live="polite">
           <article class="summary-card summary-card-total">
-            <p>Schools in view</p>
+            <p>Community sites</p>
             <strong id="site-count">—</strong>
             <span id="country-breakdown">Loading site register</span>
           </article>
           <article class="summary-card">
             <p><span class="status-dot healthy"></span>Operating normally</p>
             <strong id="healthy-count">—</strong>
-            <span>No degraded or critical domains</span>
+            <span>Connectivity, power and devices have current healthy evidence</span>
           </article>
           <article class="summary-card">
             <p><span class="status-dot degraded"></span>Needs review</p>
@@ -74,23 +73,27 @@
             <strong id="critical-count">—</strong>
             <span>One or more critical domains</span>
           </article>
+          <article class="summary-card">
+            <p><span class="status-dot unknown" aria-hidden="true"></span>Unknown or incomplete</p>
+            <strong id="unknown-count">—</strong>
+            <span>Missing or stale evidence needs checking</span>
+          </article>
         </div>
       </section>
 
       <section class="operations-grid">
-        <div class="site-register" aria-labelledby="schools-title">
+        <div class="site-register" aria-labelledby="sites-title">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Site register</p>
-              <h2 id="schools-title">School status</h2>
+              <h2 id="sites-title">Community site status</h2>
             </div>
-            <p id="visible-count" class="section-meta">— schools</p>
+            <p id="visible-count" class="section-meta">— sites</p>
           </div>
           <div class="status-key" aria-label="Status key">
             <span><i class="status-dot healthy"></i>Healthy</span>
             <span><i class="status-dot degraded"></i>Degraded</span>
             <span><i class="status-dot critical"></i>Critical</span>
-            <span><i class="status-dot unknown"></i>No evidence</span>
+            <span><i class="status-dot unknown"></i>Unknown</span>
           </div>
           <div id="site-list" class="site-list" aria-live="polite" aria-busy="true">
             <div class="skeleton-row"></div>
@@ -102,8 +105,7 @@
         <aside class="attention-panel" aria-labelledby="attention-title">
           <div class="attention-heading">
             <div>
-              <p class="eyebrow eyebrow-light">Support queue</p>
-              <h2 id="attention-title">Needs attention</h2>
+              <h2 id="attention-title" tabindex="-1">Needs attention</h2>
             </div>
             <span id="incident-count" class="count-badge">—</span>
           </div>
@@ -124,20 +126,21 @@
       <section class="sources" aria-labelledby="sources-title">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Integration layer</p>
             <h2 id="sources-title">Connected evidence</h2>
           </div>
-          <p class="section-meta">Vendor systems remain the source of record</p>
+          <p class="section-meta">Installation-wide collection status, not community internet availability</p>
         </div>
         <div id="source-list" class="source-list">
           <p class="empty-copy">Loading source inventory…</p>
         </div>
       </section>
+      <p id="action-feedback" role="status" aria-live="polite"></p>
+      <noscript><p class="notice">Enable JavaScript to load this console. No current measurements are displayed without it. The authenticated API remains available at <a href="/api/v1/openapi.json">the API reference</a>.</p></noscript>
     </main>
 
     <footer>
-      <p><strong>HubOS</strong> · Open infrastructure for school connectivity operations.</p>
-      <p>All schools and readings shown here are synthetic.</p>
+      <p><strong>HubOS</strong> · Open infrastructure for community connectivity.</p>
+      <p id="installation-note">Use current evidence to plan support.</p>
     </footer>
   </body>
 </html>
